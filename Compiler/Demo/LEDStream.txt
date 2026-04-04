@@ -1,0 +1,43 @@
+fn delay_ms
+	mem
+		$len I 0
+		$now I 0
+		$start I 0
+		$mid I 0
+	end_mem
+	timer $start
+	lb loop
+		timer $now
+		sub I $now $start
+		push I $mid
+		ge I $mid $len
+		jmp_t finish
+	jmp loop
+	lb finish
+		ret
+endfn
+		
+main
+	mem
+		$delay I 0
+	end_mem
+	mov I $delay 100
+	lb loop_main
+		gpio_write 18 1
+		pushp I $delay
+		call delay_ms
+		gpio_write 18 0
+
+		gpio_write 19 1
+		pushp I $delay
+		call delay_ms
+		gpio_write 19 0
+
+		gpio_write 20 1
+		pushp I $delay
+		call delay_ms
+		gpio_write 20 0
+
+	jmp loop_main
+	hlt
+endmain

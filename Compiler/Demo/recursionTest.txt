@@ -1,0 +1,57 @@
+fn fact
+	mem
+		$max_level I 0
+		$next_level I 0
+		$result I 0
+	end_mem
+	eq I $max_level 1
+	jmp_t rt
+	sub I $max_level 1
+	push I $next_level
+	pushp I $next_level
+	call fact
+	push I $result
+	mul I $max_level $result
+	ret
+	lb rt
+		ret
+endfn
+
+fn fibonacci
+	mem
+		$a I 0
+		$b I 0
+		$depth I 0
+		$c I 0
+		$next_depth I 0
+		$result I 0
+	end_mem
+	eq I $depth 1
+	jmp_t rt2
+	add I $a $b
+	push I $c
+	sub I $depth 1
+	push I $next_depth
+	pushp I $b
+	pushp I $c
+	pushp I $next_depth
+	call fibonacci
+	ret
+	lb rt2
+		add I $b 0
+		ret
+endfn
+	
+main
+	mem
+		$x I 0
+	end_mem
+	mov I $x 10
+	pushp I $x
+	call fact
+	pushp I 1
+	pushp I 1
+	pushp I 10
+	call fibonacci
+	hlt
+	
