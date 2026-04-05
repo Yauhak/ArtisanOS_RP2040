@@ -16,7 +16,10 @@ int needJump[OS_MAX_TASK] = { 0 };
 typedef int8_t (*OpHandler)(uint8_t, int32_t *, uint16_t);
 static OpHandler opcode_table[HLT + 1] = {
 	[MOV] = mov,
-	[IVKARRAY] = invoke_array,
+	[EXT_BYTE] = ext_byte,
+	[SETARRAY] = set_read_array,
+	[READARRAY] = set_read_array,
+	[INITARRAY] = init_array,
 	[PUSH] = push,
 	[PUSHP] = pushp,
 	[ADD] = calc,
@@ -38,6 +41,9 @@ static OpHandler opcode_table[HLT + 1] = {
 	[ARS_TIMER] = ars_timer,
 	[GPIO_WRITE] = gpio_write,
 	[GPIO_READ] = gpio_read,
+	[VAL] = val,
+	[TO_INT] = to_int,
+	[TO_FLOAT] = to_float,
 	[HLT] = hlt
 };
 
@@ -87,38 +93,187 @@ int8_t mov(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 	}
 }
 
-int8_t invoke_array(uint8_t ParamType, int32_t *params, uint16_t taskId) {
+int8_t ext_byte(uint8_t ParamType, int32_t *params, uint16_t taskId) {
+	Serial.print("@ext_byte ");
+	Serial.print(taskId);
+	Serial.print("\n");
+	FindPhyMemOffByID(taskId, params[1]);
+	int8_t x = findByteWithAddr(taskId);
+	FindPhyMemOffByID(taskId, params[0]);
+	setInt(x, taskId);
+}
+
+//INIT_ARRAY [array] [count] [[1-byte tag(addr/imm)][param]...]
+int8_t init_array(uint8_t ParamType, int32_t *params, uint16_t taskId) {
+	Serial.print("@init_array ");
+	Serial.print(taskId);
+	Serial.print("\n");
+	needJump[taskId] = 1;
+	CurCmd[taskId] += 2 * sizeof(int32_t);
 	uint8_t ivk_type = (ParamType & 0x06) >> 1;
 	ParamType &= 0x01;
-	int32_t index;
+	int32_t count;
 	if (ParamType == 0) {
-		index = params[2];
+		count = params[1];
 	} else {
-		FindPhyMemOffByID(taskId, params[2]);
+		FindPhyMemOffByID(taskId, params[1]);
+		count = findIntWithAddr(taskId);
+	}
+	FindPhyMemOffByID(taskId, params[0]);
+	int32_t i32, addr;
+	float f32;
+	for (int i = 0; i < count; i++) {
+		uint8_t tag = *CurCmd[taskId]++;
+		switch (ivk_type) {
+			case 0:
+				{
+					if (!tag) {
+						setByte(*CurCmd[taskId]++, taskId);
+					} else {
+						ARS_memmove(&addr, CurCmd[taskId], sizeof(int32_t));
+						CurCmd[taskId] += sizeof(int32_t);
+						FindPhyMemOffByID(taskId, addr);
+						setByte(findByteWithAddr(taskId), taskId);
+					}
+					break;
+				}
+			case 1:
+				{
+					if (!tag) {
+						ARS_memmove(&i32, CurCmd[taskId], sizeof(int32_t));
+						setInt(i32, taskId);
+						CurCmd[taskId] += sizeof(int32_t);
+					} else {
+						ARS_memmove(&addr, CurCmd[taskId], sizeof(int32_t));
+						CurCmd[taskId] += sizeof(int32_t);
+						FindPhyMemOffByID(taskId, addr);
+						setInt(findIntWithAddr(taskId), taskId);
+					}
+					break;
+				}
+			case 2:
+				{
+					if (!tag) {
+						ARS_memmove(&f32, CurCmd[taskId], sizeof(float));
+						setFloat(f32, taskId);
+						CurCmd[taskId] += sizeof(float);
+					} else {
+						ARS_memmove(&addr, CurCmd[taskId], sizeof(int32_t));
+						CurCmd[taskId] += sizeof(int32_t);
+						FindPhyMemOffByID(taskId, addr);
+						setFloat(findFloatWithAddr(taskId), taskId);
+					}
+					break;
+				}
+		}
+	}
+}
+
+//SET_ARRAY/READ_ARRAY [array] [index]
+int8_t set_read_array(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
+	Serial.print("@set/read array ");
+	Serial.print(taskId);
+	Serial.print("\n");
+	uint8_t cmd = cmdAndPmTp >> 3;
+	uint8_t ivk_type = (cmdAndPmTp & 0x06) >> 1;
+	cmdAndPmTp &= 0x01;
+	int32_t index;
+	if (cmdAndPmTp == 0) {
+		index = params[1];
+	} else {
+		FindPhyMemOffByID(taskId, params[1]);
 		index = findIntWithAddr(taskId);
 	}
-	FindPhyMemOffByID(taskId, params[1]);
-	CurPhyMem[taskId] += index;
+	FindPhyMemOffByID(taskId, params[0]);
+	CurPhyMem[taskId] += (!ivk_type ? 1 : 4) * index;
 	switch (ivk_type) {
 		case 0:
-			CalcResu[taskId] = findByteWithAddr(taskId);
-			FindPhyMemOffByID(taskId, params[0]);
-			setByte(CalcResu[taskId], taskId);
-			break;
+			{
+				if (cmd == READARRAY)
+					CalcResu[taskId] = findByteWithAddr(taskId);
+				else
+					setByte(CalcResu[taskId], taskId);
+				break;
+			}
 		case 1:
-			CalcResu[taskId] = findIntWithAddr(taskId);
-			FindPhyMemOffByID(taskId, params[0]);
-			setInt(CalcResu[taskId], taskId);
-			break;
+			{
+				if (cmd == READARRAY)
+					CalcResu[taskId] = findIntWithAddr(taskId);
+				else
+					setInt(CalcResu[taskId], taskId);
+				break;
+			}
 		case 2:
 			{
-				float x = findFloatWithAddr(taskId);
-				CalcResu[taskId] = tranFloatToInt(x);
-				FindPhyMemOffByID(taskId, params[0]);
-				setFloat(x, taskId);
+				if (cmd == READARRAY)
+					CalcResu[taskId] = tranFloatToInt(findFloatWithAddr(taskId));
+				else {
+					float x = tranIntToFloat(CalcResu[taskId]);
+					setFloat(x, taskId);
+				}
 				break;
 			}
 	}
+	Serial.print("CalcResu: ");
+	Serial.print(CalcResu[taskId]);
+	Serial.print("\n");
+}
+
+// VAL [立即数或地址]
+// 根据类型和地址标志，将值存入 CalcResu[taskId]
+int8_t val(uint8_t ParamType, int32_t *params, uint16_t taskId) {
+	Serial.print("@val ");
+	Serial.print(taskId);
+	Serial.print("\n");
+	uint8_t type = (ParamType & 0x06) >> 1;  // 类型：0=B,1=I,2=F
+	uint8_t is_addr = ParamType & 0x01;      // 0=立即数，1=地址
+	if (is_addr) {
+		FindPhyMemOffByID(taskId, params[0]);
+		if (type == 0) {
+			CalcResu[taskId] = findByteWithAddr(taskId);  // 字节符号扩展
+		} else if (type == 1) {
+			CalcResu[taskId] = findIntWithAddr(taskId);
+		} else {  // float
+			float f = findFloatWithAddr(taskId);
+			CalcResu[taskId] = tranFloatToInt(f);
+		}
+	} else {
+		// 立即数
+		if (type == 0) {
+			CalcResu[taskId] = (int8_t)params[0];
+		} else if (type == 1) {
+			CalcResu[taskId] = params[0];
+		} else {  // float
+			float f = tranIntToFloat(params[0]);
+			CalcResu[taskId] = tranFloatToInt(f);
+		}
+	}
+	return 0;
+}
+
+// TO_INT [地址]：将地址处（float）转换为 int 存入 CalcResu
+int8_t to_int(uint8_t ParamType, int32_t *params, uint16_t taskId) {
+	Serial.print("@to_int ");
+	Serial.print(taskId);
+	Serial.print("\n");
+	// 参数只有一个地址，忽略 ParamType（无类型指定）
+	FindPhyMemOffByID(taskId, params[0]);
+	float f = findFloatWithAddr(taskId);
+	CalcResu[taskId] = (int32_t)f;  // 浮点转整数
+	return 0;
+}
+
+// TO_FLOAT [地址]：将地址处（int）转换为 float 存入 CalcResu
+int8_t to_float(uint8_t ParamType, int32_t *params, uint16_t taskId) {
+	Serial.print("@to_float ");
+	Serial.print(taskId);
+	Serial.print("\n");
+	FindPhyMemOffByID(taskId, params[0]);
+	int32_t i = findIntWithAddr(taskId);
+	float f = (float)i;
+	// 将浮点数按 IEEE754 位模式存入 CalcResu（CalcResu 是 int32_t，需保持位模式）
+	ARS_memmove(&CalcResu[taskId], &f, sizeof(float));
+	return 0;
 }
 
 //将CalcResu存入内存
@@ -534,10 +689,7 @@ int8_t bit_and_or_xor(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 			val1_i ^= val2_i;
 			break;
 	}
-	if (ParamType) {
-		FindPhyMemOffByID(taskId, params[1]);
-		setInt(val1_i, taskId);
-	}
+	CalcResu[taskId] = val1_i;
 }
 
 int8_t bit_move(uint8_t ParamType, int32_t *params, uint16_t taskId) {
@@ -565,10 +717,7 @@ int8_t bit_move(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 			val1_i >>= val2_i;
 			break;
 	}
-	if (ParamType) {
-		FindPhyMemOffByID(taskId, params[0]);
-		setInt(val1_i, taskId);
-	}
+	CalcResu[taskId] = val1_i;
 }
 
 //注意！！
@@ -579,7 +728,7 @@ int8_t interprete(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
 	uint8_t cmd = cmdAndPmTp >> 3;
 	//后三个字节共同代表参数的一些性质
 	uint8_t ParamType = cmdAndPmTp & 0x07;
-	if (!(cmd >= ADD && cmd <= NE)) {
+	if (!((cmd >= ADD && cmd <= NE) || cmd == SETARRAY || cmd == READARRAY)) {
 		opcode_table[cmd](ParamType, params, taskId);
 	} else {
 		opcode_table[cmd](cmdAndPmTp, params, taskId);
