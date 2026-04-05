@@ -53,11 +53,6 @@ int return_addr_of_var(char *name) {
 	exit(1);
 }
 
-// 将字符串转换为整数（支持十进制）
-int parse_int(const char *s) {
-	return atoi(s);
-}
-
 // 字节码生成函数（与解释器匹配）
 void generate_1(char instruction, char instruct_type, char param_type, int *params, short count) {
 	char instruct = instruction << 3;
@@ -139,8 +134,7 @@ void create_sub(char *sentence) {
 		s = read_a_token(s);
 		s = skip_blank(s);
 		int array_len = atoi(result);
-		if (array_len == 0) array_len = 1;
-		ttl_var_len += elem_size * array_len;
+		ttl_var_len += elem_size * (array_len + 1);
 		symbol_count++;
 	}
 }
@@ -215,13 +209,183 @@ void compile_one_line(char *sentence) {
 		if (src_is_addr) {
 			src_val = return_addr_of_var(result);
 		} else {
-			src_val = parse_int(result);
+			if (type != 2)
+				src_val = atoi(result);
+			else {
+				float f = atof(result);
+				memcpy(&src_val, &f, sizeof(float));
+			}
 		}
 		int params[2] = {dest, src_val};
 		generate_1(MOV, type, src_is_addr, params, 2);
 		return;
 	}
+// 处理 ext_byte 指令
+	if (!strcmp(result, "ext_byte")) {
+		s = read_a_token(s);
+		s = skip_blank(s);
+		int dest = return_addr_of_var(result); // 目标地址
+		s = read_a_token(s);
+		s = skip_blank(s);
+		int src = return_addr_of_var(result);  // 源地址（字节）
+		int params[2] = {dest, src};
+		// 指令格式：高5位 EXT_BYTE，低3位任意（这里填0）
+		generate_1(EXT_BYTE, 0, 0, params, 2);
+		return;
+	}
 
+	// 处理 set_array 和 read_array 指令
+	if (!strcmp(result, "set_array") || !strcmp(result, "read_array")) {
+		int is_set = !strcmp(result, "set_array"); // 1=set, 0=read
+		// 读取类型 B/I/F
+		s = read_a_token(s);
+		s = skip_blank(s);
+		int ivk_type;
+		if (!strcmp(result, "B")) ivk_type = 0;
+		else if (!strcmp(result, "I")) ivk_type = 1;
+		else if (!strcmp(result, "F")) ivk_type = 2;
+		else {
+			printf("Error: set_array/read_array missing type (B/I/F)\n");
+			exit(1);
+		}
+		// 读取数组基地址
+		s = read_a_token(s);
+		s = skip_blank(s);
+		int array_addr = return_addr_of_var(result);
+		// 读取索引
+		s = read_a_token(s);
+		s = skip_blank(s);
+		int idx_is_addr = (result[0] == '$');
+		int idx_val;
+		if (idx_is_addr) {
+			idx_val = return_addr_of_var(result); // 跳过 '$'
+		} else {
+			idx_val = atoi(result);
+		}
+		int params[2] = {array_addr, idx_val};
+		uint8_t opcode = is_set ? SETARRAY : READARRAY;
+		generate_1(opcode, ivk_type, idx_is_addr, params, 2);
+		return;
+	}
+
+	// 处理 VAL 指令
+	if (!strcmp(result, "val")) {
+		s = read_a_token(s);
+		s = skip_blank(s);
+		// 读取类型 B/I/F
+		int type_flag;
+		if (!strcmp(result, "B")) type_flag = 0;
+		else if (!strcmp(result, "I")) type_flag = 1;
+		else if (!strcmp(result, "F")) type_flag = 2;
+		else {
+			printf("Error: VAL missing type (B/I/F)\n");
+			exit(1);
+		}
+		s = read_a_token(s);
+		s = skip_blank(s);
+		int is_addr = (result[0] == '$');
+		int val;
+		if (is_addr) {
+			val = return_addr_of_var(result);
+		} else {
+			if (type_flag != 2)
+				val = atoi(result);
+			else {
+				float f = atof(result);
+				memcpy(&val, &f, sizeof(float));
+			}
+		}
+		int params[1] = {val};
+		generate_1(VAL, type_flag, is_addr, params, 1);
+		return;
+	}
+
+	// 处理 init_array 指令
+	if (!strcmp(result, "init_array")) {
+		// 读取类型 B/I/F
+		s = read_a_token(s);
+		s = skip_blank(s);
+		int ivk_type;
+		if (!strcmp(result, "B")) ivk_type = 0;
+		else if (!strcmp(result, "I")) ivk_type = 1;
+		else if (!strcmp(result, "F")) ivk_type = 2;
+		else {
+			printf("Error: init_array missing type (B/I/F)\n");
+			exit(1);
+		}
+		// 读取数组基地址
+		s = read_a_token(s);
+		s = skip_blank(s);
+		int array_addr = return_addr_of_var(result);
+		// 读取 count（可以是立即数或地址）
+		s = read_a_token(s);
+		s = skip_blank(s);
+		int count_is_addr = (result[0] == '$');
+		int count_val;
+		if (count_is_addr) {
+			count_val = return_addr_of_var(result);
+		} else {
+			count_val = atoi(result);
+		}
+		// 生成指令头部（两个固定参数）
+		int params[2] = {array_addr, count_val};
+		generate_1(INITARRAY, ivk_type, count_is_addr, params, 2);
+		// 现在处理可变参数列表
+		while (1) {
+			// 跳过空白
+			s = skip_blank(s);
+			if (*s == '\0' || *s == '\n' || *s == ';') break;
+			s = read_a_token(s);
+			int is_addr = (result[0] == '$');
+			int val;
+			if (is_addr) {
+				val = return_addr_of_var(result);
+			}
+			// 写入 tag 字节 (0=立即数,1=地址)
+			*ptr++ = is_addr ? 1 : 0;
+			if (ivk_type == 0) { // BYTE
+				if (is_addr) {
+					*(int32_t *)ptr = val;
+					ptr += 4;
+				} else {
+					*ptr++ = (uint8_t)atoi(result);
+				}
+			} else if (ivk_type == 1) {
+				if (is_addr) {
+					*(int32_t *)ptr = val;
+					ptr += 4;
+				} else {
+					*(int32_t *)ptr = atoi(result);
+					ptr += 4;
+				}
+			} else {
+				if (is_addr) {
+					*(int32_t *)ptr = val;
+					ptr += 4;
+				} else {
+					*(float *)ptr = atof(result);
+					ptr += 4;
+				}
+			}
+		}
+		return;
+	}
+	
+	// 处理 TO_INT 和 TO_FLOAT
+	if (!strcmp(result, "to_int") || !strcmp(result, "to_float")) {
+		int op = (!strcmp(result, "to_int")) ? TO_INT : TO_FLOAT;
+		s = read_a_token(s);
+		s = skip_blank(s);
+		if (result[0] != '$') {
+			printf("Error: %s requires a variable address (with $)\n", result);
+			exit(1);
+		}
+		int addr = return_addr_of_var(result);
+		int params[1] = {addr};
+		generate_3(op, params, 1);  // 使用无类型标志的生成函数
+		return;
+	}
+	
 	// 处理 GPIO_WRITE 指令
 	if (!strcmp(result, "gpio_read")) {
 		s = read_a_token(s);
@@ -234,7 +398,7 @@ void compile_one_line(char *sentence) {
 		if (src_is_addr) {
 			src_val = return_addr_of_var(result);
 		} else {
-			src_val = parse_int(result);
+			src_val = atoi(result);
 		}
 		int params[2] = {dest, src_val};
 		generate_1(GPIO_READ, 0, src_is_addr, params, 2);
@@ -251,7 +415,7 @@ void compile_one_line(char *sentence) {
 			p1[0] = 1;
 			p1[1] = return_addr_of_var(result);
 		} else {
-			p1[1] = parse_int(result);
+			p1[1] = atoi(result);
 		}
 		s = read_a_token(s);
 		s = skip_blank(s);
@@ -259,7 +423,7 @@ void compile_one_line(char *sentence) {
 			p2[0] = 1;
 			p2[1] = return_addr_of_var(result);
 		} else {
-			p2[1] = parse_int(result);
+			p2[1] = atoi(result);
 		}
 		char param_type;
 		if (!p1[0] && !p2[0]) param_type = 0;
@@ -295,7 +459,12 @@ void compile_one_line(char *sentence) {
 			p1[0] = 1;
 			p1[1] = return_addr_of_var(result);
 		} else {
-			p1[1] = parse_int(result);
+			if (!is_float)
+				p1[1] = atoi(result);
+			else {
+				float f = atof(result);
+				memcpy(&p1[1], &f, sizeof(float));
+			}
 		}
 		s = read_a_token(s);
 		s = skip_blank(s);
@@ -303,7 +472,12 @@ void compile_one_line(char *sentence) {
 			p2[0] = 1;
 			p2[1] = return_addr_of_var(result);
 		} else {
-			p2[1] = parse_int(result);
+			if (!is_float)
+				p2[1] = atoi(result);
+			else {
+				float f = atof(result);
+				memcpy(&p2[1], &f, sizeof(float));
+			}
 		}
 
 		// 确定 param_type
@@ -337,7 +511,12 @@ void compile_one_line(char *sentence) {
 		if (is_addr) {
 			val = return_addr_of_var(result);
 		} else {
-			val = parse_int(result);
+			if (type_flag != 2)
+				val = atoi(result);
+			else {
+				float f = atof(result);
+				memcpy(&val, &f, sizeof(float));
+			}
 		}
 		int param = val;
 		generate_1(PUSHP, type_flag, is_addr, &param, 1);
@@ -371,7 +550,7 @@ void compile_one_line(char *sentence) {
 		//这是为数不多不需要指定运算类型的指令之一（笑
 		int addr = return_addr_of_var(result);
 		int params[1] = {addr};
-		generate_4(TIMER, 0, params, 1);
+		generate_4(ARS_TIMER, 0, params, 1);
 		return;
 	}
 
