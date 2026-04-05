@@ -7,18 +7,20 @@ extern int32_t CalcResu[OS_MAX_TASK];
 extern int needJump[OS_MAX_TASK];
 extern volatile uint8_t *CurCmd[OS_MAX_TASK];
 
-const char paramQ[] = { 2, 3, 1, 1, 2,
+const char paramQ[] = { 2, 2, 2, 2, 2,
+                        1, 1, 2, 2, 2,
                         2, 2, 2, 2, 2,
-                        2, 2, 2, 2, 1,
-                        1, 1, 0, 2, 2,
-                        1, 2, 2, 0 };
+                        2, 2, 1, 1, 1,
+                        0, 2, 2, 1, 2,
+                        2, 1, 1, 1, 0 };
+
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
   Serial.println("RP2040 ARS VM Starting...");
   init_mem_info();
-  memcpy(OS_EXE_LOAD_START(0), LED_Breath, LED_Breath_Len);
+  memcpy(OS_EXE_LOAD_START(0), LED_Flash, LED_Flash_Len);
   memcpy(OS_EXE_LOAD_START(1), LED_Stream, LED_Stream_Len);
   Serial.println("Load Programs successed!");
   call(0, (int32_t *)OS_EXE_LOAD_START(0), 0);
