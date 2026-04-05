@@ -54,4 +54,4 @@ main
 	pushp I 10
 	call fibonacci
 	hlt
-	
+endmain
