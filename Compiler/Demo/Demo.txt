@@ -52,3 +52,4 @@ main
 	pushp I 30
 	call final
 	hlt
+endmain
