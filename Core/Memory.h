@@ -42,7 +42,7 @@ struct Magic {
 	//“应用程序”的字节码中若没有限制则可以访问全局内存
 	//作用域的规划将交给ARS字节码编译器处理
 	//int level;
-	uint8_t padding[3];
+	//uint8_t padding[3];
 } __attribute__((packed));
 
 typedef struct Magic Magic;
