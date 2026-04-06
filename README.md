@@ -188,7 +188,7 @@ endmain
 | GT          | gt 类型 操作数1 操作数2                                               | 大于比较                                                              | gt F $temp 36.5                                                      |
 | LE          | le 类型 操作数1 操作数2                                               | 小于等于比较                                                          | le I $index $max                                                     |
 | GE          | ge 类型 操作数1 操作数2                                               | 大于等于比较                                                          | ge I $score 60                                                       |
-| NE          | ne 类型 操作数1 操作数2                                               | 不等于比较                                                            | ne B $flag 0                                                         |
+| NE          | ne 类型 操作数1 操作数2                                               | 不等于比较                                                            | ne F $flag 0                                                         |
 | JMP         | jmp 标签                                                             | 无条件跳转到指定标签                                                   | jmp loop_start                                                       |
 | JMP_T       | jmp_t 标签                                                           | 若 CalcResu 不为 0 则跳转到标签                                        | jmp_t is_equal                                                       |
 | CALL        | call 子程序名                                                        | 调用子程序（子程序需先用 fn … endfn 定义）                              | call delay_ms                                                        |
@@ -223,6 +223,8 @@ MIT License
 - 变量/数组声明时的“长度”原则，与C等传统语言不同，**需手动+1**。
 - `set_array`、`read_array`始终只用3参数，均通过`CalcResu`寄存器读写。
 - `init_array`的元素数与实际初始化数目存在(+1)的特立独行的差异，请仔细留意。
+- 所有运算/比较指令都不支持对单字节数进行操作，请先使用ext_byte命令将其扩展为4字节整型
+- 可以通过mov指令将4字节整型转换成单字节
 - 灵活组合低级与高级特性，极适合极客DIY/嵌入式系统学习与实验。
 
 ---
