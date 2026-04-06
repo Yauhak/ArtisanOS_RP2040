@@ -27,6 +27,23 @@ ArtisanOS_RP2040 is a minimal OS for the RP2040, featuring a custom bytecode vir
 
 ---
 
+## 项目结构 | Project Structure
+
+```
+ArtisanOS_RP2040/
+├── Core/
+│   ├── main.ino          # Arduino入口
+│   ├── INTERPRETER.*     # 解释器&虚拟机实现
+│   ├── Memory.*          # 虚拟机内存管理
+│   ├── ByteCode.h        # 字节码/示例程序
+├── Compiler/
+│   ├── Source/Compiler.* # 字节码编译器
+│   └── Demo/             # 伪高级语言Demo
+└── README.md             # 项目说明
+```
+
+---
+
 ## 快速上手 | Quick Start
 
 1. **Clone & Build**
@@ -72,8 +89,8 @@ $变量名 类型 长度
 举例/Examples:
 ```
 mem
-  $flag B 0      // 单字节变量
-  $vec I 2       // 3元素int数组（2+1=3）
+  $flag B 0      ; 单字节变量
+  $vec I 2       ; 3元素int数组（2+1=3）
 end_mem
 ```
 
@@ -88,8 +105,8 @@ end_mem
 
 - 用例 / Example:
     ```
-    set_array I $vec 1     // $vec[1] = CalcResu
-    read_array I $vec 2    // CalcResu = $vec[2]
+    set_array I $vec 1     ; $vec[1] = CalcResu
+    read_array I $vec 2    ; CalcResu = $vec[2]
     ```
 
 #### 3. init_array 数组初始化
@@ -106,7 +123,7 @@ init_array 类型 数组名 元素数量 [元素1] [元素2] ...
 
 **示例：**
 ```
-init_array I $vec 2 5 6 7   // 实际为$vec有3个元素：5,6,7
+init_array I $vec 2 5 6 7   ; 实际为$vec有3个元素：5,6,7
 ```
 
 #### 4. 条件跳转与寄存器 | Condition, Result Register
@@ -121,10 +138,10 @@ init_array I $vec 2 5 6 7   // 实际为$vec有3个元素：5,6,7
 #### 变量声明 | Variable Definition
 
 ```
-// 定义单变量
-$a I 0            // int
-// 定义3元素数组
-$array F 2        // float[3]
+; 定义单变量
+$a I 0            ; int
+; 定义3元素数组
+$array F 2        ; float[3]
 ```
 
 #### 流程/语法 | Control & Syntax:
@@ -133,14 +150,14 @@ $array F 2        // float[3]
 main
   mem
     $x I 0
-    $y I 2   // $y[3]
+    $y I 2   ; $y[3]
   end_mem
   mov I $x 10
   eq I $x 10
   jmp_t is_ten
   hlt
 lb is_ten
-  // ...
+  ; ...
 endmain
 ```
 
@@ -152,15 +169,15 @@ endmain
 ```
 main
   mem
-    $buf I 2      // $buf[3]
+    $buf I 2      ; $buf[3]
     $tmp I 0
   end_mem
-  // 初始化3个元素值为5,6,7
+  ; 初始化3个元素值为5,6,7
   init_array I $buf 2 5 6 7
-  // 读取buf[2]
-  read_array I $buf 2     // CalcResu = $buf[2]
-  // 写buf[1]
-  set_array I $buf 1      // $buf[1] = CalcResu
+  ; 读取buf[2]
+  read_array I $buf 2     ; CalcResu = $buf[2]
+  ; 写buf[1]
+  set_array I $buf 1      ; $buf[1] = CalcResu
 hlt
 endmain
 ```
@@ -193,8 +210,8 @@ endmain
 | JMP_T       | jmp_t 标签                                                           | 若 CalcResu 不为 0 则跳转到标签                                        | jmp_t is_equal                                                       |
 | CALL        | call 子程序名                                                        | 调用子程序（子程序需先用 fn … endfn 定义）                              | call delay_ms                                                        |
 | RET         | ret                                                                 | 从子程序返回调用点                                                     | ret                                                                  |
-| BIT_AOX     | bit_aox 操作 操作数1 操作数2；操作：1(AND), 2(OR), 3(XOR)              | 按位与/或/异或，结果存入 CalcResu                                      | bit_aox 1 $mask $flags                                               |
-| BIT_MOV     | bit_move 方向 操作数 位数；方向：left(左移) 或 right(右移)；位数可为立即数或地址 | 按位移位，结果存入 CalcResu                                            | bit_move left $value 2；bit_move right $value $bits                  |
+| BIT_AOX     | bit_aox 操作 操作数1 操作数2；操作：A(AND), O(OR), X(XOR)              | 按位与/或/异或，结果存入 CalcResu                                      | bit_aox A $mask $flags                                               |
+| BIT_MOV     | bit_move 方向 操作数 位数；方向：L(左移) 或 R(右移)；位数可为立即数或地址 | 按位移位，结果存入 CalcResu                                            | bit_move L $value 2；bit_move R $value $bits                  |
 | ARS_TIMER   | timer 地址                                                           | 将系统毫秒数（millis()）存入指定地址（整型）                             | timer $start_time                                                    |
 | GPIO_WRITE  | gpio_write 引脚 值；引脚/值可为立即数或地址                             | 设置指定 GPIO 引脚输出高低电平（值：0/1）                               | gpio_write 13 1；gpio_write $pin $val                                |
 | GPIO_READ   | gpio_read 目标地址 引脚；引脚可为立即数或地址                           | 读取指定 GPIO 引脚电平，存入目标地址                                    | gpio_read $state 18；gpio_read $value $pin                           |
