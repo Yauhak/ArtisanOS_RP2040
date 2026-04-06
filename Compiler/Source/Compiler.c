@@ -543,6 +543,101 @@ void compile_one_line(char *sentence) {
 		return;
 	}
 
+	// 处理 BIT_AOX
+if (!strcmp(result, "bit_aox")) {
+    // 读取操作符
+    s = read_a_token(s);
+    s = skip_blank(s);
+    int op_type = 0;
+    if (!strcmp(result, "a")) op_type = 1;
+    else if (!strcmp(result, "o")) op_type = 2;
+    else if (!strcmp(result, "x")) op_type = 3;
+    else {
+        printf("Error: bit_aox requires A/O/X\n");
+        exit(1);
+    }
+    // 读取 p1
+    s = read_a_token(s);
+    s = skip_blank(s);
+    int p1_is_addr = (result[0] == '$');
+    int p1_val;
+    if (p1_is_addr) {
+        p1_val = return_addr_of_var(result);
+    } else {
+        p1_val = atoi(result);
+    }
+    // 读取 p2
+    s = read_a_token(s);
+    s = skip_blank(s);
+    int p2_is_addr = (result[0] == '$');
+    int p2_val;
+    if (p2_is_addr) {
+        p2_val = return_addr_of_var(result);
+    } else {
+        p2_val = atoi(result);
+    }
+    // 确定 param_type: 0双立即数,1地址+立即数,2双地址
+    char param_type;
+    if (!p1_is_addr && !p2_is_addr) param_type = 0;
+    else if (p1_is_addr && !p2_is_addr) param_type = 1;
+    else if (p1_is_addr && p2_is_addr) param_type = 2;
+    else {
+        printf("Error: bit_aox does not support immediate first operand and address second operand\n");
+        exit(1);
+    }
+    int params[3] = {op_type, p1_val, p2_val};
+    generate_4(BIT_AOX, param_type, params, 3);
+    return;
+}
+
+// 处理 BIT_MOV
+if (!strcmp(result, "bit_move")) {
+    // 读取方向 L/R
+    s = read_a_token(s);
+    s = skip_blank(s);
+    int shift_dir = 0; // 0左移,1右移
+    if (!strcmp(result, "l")) shift_dir = 0;
+    else if (!strcmp(result, "r")) shift_dir = 1;
+    else {
+        printf("Error: bit_move requires L/R\n");
+        exit(1);
+    }
+    // 读取 p1
+    s = read_a_token(s);
+    s = skip_blank(s);
+    int p1_is_addr = (result[0] == '$');
+    int p1_val;
+    if (p1_is_addr) {
+        p1_val = return_addr_of_var(result);
+    } else {
+        p1_val = atoi(result);
+    }
+    // 读取 p2
+    s = read_a_token(s);
+    s = skip_blank(s);
+    int p2_is_addr = (result[0] == '$');
+    int p2_val;
+    if (p2_is_addr) {
+        p2_val = return_addr_of_var(result);
+    } else {
+        p2_val = atoi(result);
+    }
+    // 确定 param_type 低2位
+    char param_type;
+    if (!p1_is_addr && !p2_is_addr) param_type = 0;
+    else if (p1_is_addr && !p2_is_addr) param_type = 1;
+    else if (p1_is_addr && p2_is_addr) param_type = 2;
+    else {
+        printf("Error: bit_move does not support immediate first operand and address second operand\n");
+        exit(1);
+    }
+    // 将移位方向编码到 param_type 的 bit2
+    param_type |= (shift_dir << 2);
+    int params[2] = {p1_val, p2_val};
+    generate_4(BIT_MOV, param_type, params, 2);
+    return;
+}
+	
 	// 处理 PUSH
 	if (!strcmp(result, "timer")) {
 		s = read_a_token(s);
