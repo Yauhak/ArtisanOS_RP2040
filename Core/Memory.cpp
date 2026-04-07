@@ -349,8 +349,8 @@ int findFreeMemById(uint8_t id, int allocLen, int level) {
 			if (!ARS_strcmp((const char *)M2, FREE, 4)) {
 				//若该块空闲内存大小大于需求大小
 				if (((Magic *)M2)->len > TTL) {
-					//如果该空闲块内存比总需求大不足20B，则将该内存块全部分给请求
-					if (((Magic *)M2)->len - TTL < 20) {
+					//如果该空闲块内存比总需求大不足40B，则将该内存块全部分给请求
+					if (((Magic *)M2)->len - TTL < 40) {
 						//判断该块空闲内存在链表中的位置情况
 						if (((Magic *)M2)->last_block && ((Magic *)M2)->next_block) {
 							//中间位置
