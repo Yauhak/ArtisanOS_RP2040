@@ -34,7 +34,7 @@ typedef enum {
 	ARS_TIMER,// 获取系统时钟
 	GPIO_WRITE,// 写GPIO
 	GPIO_READ,// 读GPIO
-	VAL,// 设置临时计算寄存器
+	VAL,// 设置临时计算寄存器(CalcResu)
 	TO_INT,     // 将内存中的浮点数转换为整数存入 CalcResu
 	TO_FLOAT,    // 将内存中的整数转换为浮点数存入 CalcResu
 	HLT, // 程序结束标记
