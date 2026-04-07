@@ -258,7 +258,7 @@ void compile_one_line(char *sentence) {
 		int idx_is_addr = (result[0] == '$');
 		int idx_val;
 		if (idx_is_addr) {
-			idx_val = return_addr_of_var(result); // 跳过 '$'
+			idx_val = return_addr_of_var(result);
 		} else {
 			idx_val = atoi(result);
 		}
@@ -386,7 +386,7 @@ void compile_one_line(char *sentence) {
 		return;
 	}
 	
-	// 处理 GPIO_WRITE 指令
+	// 处理 GPIO_READ 指令
 	if (!strcmp(result, "gpio_read")) {
 		s = read_a_token(s);
 		s = skip_blank(s);
