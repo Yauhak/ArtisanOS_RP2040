@@ -328,7 +328,7 @@ int8_t DelLastFuncMem(uint8_t id) {
 //简化内存分配与管理
 int findFreeMemById(uint8_t id, int allocLen, int level) {
 	//Serial.println("Yes @findFreeMemById\n");
-	//总长度TTL=子程序运行所需内存+4字节调用时 运行内存指针 指向地址+4字节调用时 命令内存指针 指向地址
+	//总长度TTL=子程序运行所需内存+指向地址+4字节上文命令指针
 	//以便RET后跳回调用该子程序的代码块和内存
 	int TTL = allocLen + 4;
 	//如果当前命令指针指向不为0（即该进程已启用）则指向当前程序的末尾内存地址
@@ -349,8 +349,8 @@ int findFreeMemById(uint8_t id, int allocLen, int level) {
 			if (!ARS_strcmp((const char *)M2, FREE, 4)) {
 				//若该块空闲内存大小大于需求大小
 				if (((Magic *)M2)->len > TTL) {
-					//如果该空闲块内存比总需求大不足50B，则将该内存块全部分给请求
-					if (((Magic *)M2)->len - TTL < 50) {
+					//如果该空闲块内存比总需求大不足20B，则将该内存块全部分给请求
+					if (((Magic *)M2)->len - TTL < 20) {
 						//判断该块空闲内存在链表中的位置情况
 						if (((Magic *)M2)->last_block && ((Magic *)M2)->next_block) {
 							//中间位置
@@ -478,7 +478,7 @@ int findFreeMemById(uint8_t id, int allocLen, int level) {
 //根据程序id查找其目前访问的“虚拟地址”对应的“物理地址”
 uint8_t FindPhyMemOffByID(uint8_t id, uint32_t offset) {
 	//Serial.println("Yes @FindPhyMemOffByID\n");
-	//除了公有变量，活跃的变量一定是最近启动的子程序的变量
+	//活跃的变量一定是最近启动的子程序的变量（暂时不具备公有变量机制）
 	Magic *M = (Magic *)MemTail[id];
 	if (!M) {
 		return NO_MEM_TAIL;
