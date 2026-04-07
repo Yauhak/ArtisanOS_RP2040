@@ -31,6 +31,7 @@ void setup() {
 
 void loop() {
   // 非阻塞指令调度
+  // 事实上，每个任务执行完一条指令后就会被立即切换成下一个任务，循环往复
   static uint8_t tid = 0;
   if (CurCmd[tid]) {
     uint8_t ins = *CurCmd[tid]++;
