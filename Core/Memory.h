@@ -33,13 +33,10 @@ struct Magic {
 	//最后的内存防线
 	//若连此值都被破坏则认为该段内存完全损坏
 	uint32_t len;
-	//len=数据块长度+3字节缓冲
+	//len=数据块长度+4字节上文指针
 	//不包括魔术字头
 	volatile uint8_t *last_block;
 	volatile uint8_t *next_block;
-	//注意
-	//此处的作用域等级只是方便虚拟机追踪内存分配情况
-	//“应用程序”的字节码中若没有限制则可以访问全局内存
 	//作用域的规划将交给ARS字节码编译器处理
 	//int level;
 	//uint8_t padding[3];
