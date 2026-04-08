@@ -328,7 +328,7 @@ int8_t DelLastFuncMem(uint8_t id) {
 //简化内存分配与管理
 int findFreeMemById(uint8_t id, int allocLen, int level) {
 	//Serial.println("Yes @findFreeMemById\n");
-	//总长度TTL=子程序运行所需内存+指向地址+4字节上文命令指针
+	//总长度TTL=子程序运行所需内存+4字节上文命令指针
 	//以便RET后跳回调用该子程序的代码块和内存
 	int TTL = allocLen + 4;
 	//如果当前命令指针指向不为0（即该进程已启用）则指向当前程序的末尾内存地址
