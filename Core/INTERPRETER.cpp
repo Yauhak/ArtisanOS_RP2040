@@ -585,7 +585,7 @@ int8_t calc(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
 			val2_f = tranIntToFloat(params[1]);
 		} else if (ParamType == 2) {  // 参数2为地址，参数1为立即数
 			FindPhyMemOffByID(taskId, params[1]);
-			val1_f = findFloatWithAddr(taskId);
+			val2_f = findFloatWithAddr(taskId);
 			val1_f = tranIntToFloat(params[0]);
 		} else if (ParamType == 3) {  // 两个参数均为地址
 			FindPhyMemOffByID(taskId, params[0]);
