@@ -472,9 +472,9 @@ int8_t ret(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 int8_t conds(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
 	Serial.print("@conds ");
 	Serial.print(taskId);
-	// 前五个字节代表命令
+	// 前五位代表命令
 	uint8_t cmd = cmdAndPmTp >> 3;
-	// 后三个字节共同代表参数的一些性质
+	// 后三位共同代表参数的一些性质
 	uint8_t ParamType = cmdAndPmTp & 0x07;
 	// 解析参数类型和数据大小
 	//用double来覆盖所有类型最大可表示的值
@@ -566,7 +566,6 @@ int8_t calc(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
 	Serial.print("@calc ");
 	Serial.print(taskId);
 	uint8_t cmd = cmdAndPmTp >> 3;
-	// 后三个字节共同代表参数的一些性质
 	uint8_t ParamType = cmdAndPmTp & 0x07;
 	// 新增参数类型标识：ParamType 的第三位表示是否为浮点运算 (1=float)
 	uint8_t is_float = (ParamType & 0x04) >> 2;  // 取第三位
