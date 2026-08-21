@@ -1,22 +1,23 @@
 #include "INTERPRETER.h"
 #include "Memory.h"
-//extern from Memory.h
-extern volatile uint8_t *CurPhyMem[OS_MAX_TASK];
-extern volatile uint8_t *CurCmd[OS_MAX_TASK];
-extern volatile uint8_t *MemTail[OS_MAX_TASK];
-extern int16_t MemLevel[OS_MAX_TASK];
-extern ParamStack Stack[OS_MAX_TASK][OS_MAX_PARAM];
-extern uint8_t IndexOfSPS[OS_MAX_TASK];
+#include "Glue.h"
+//extern from Memory.cpp
+extern volatile uars_i8 *CurPhyMem[OS_MAX_TASK];
+extern volatile uars_i8 *CurCmd[OS_MAX_TASK];
+extern volatile uars_i8 *MemTail[OS_MAX_TASK];
+extern ars_i16 MemLevel[OS_MAX_TASK];
+extern uars_i8 Stack[OS_MAX_TASK][OS_MAX_PARAM] __attribute__((aligned(4)));
+extern uars_i8 IndexOfSPS[OS_MAX_TASK];
 #define INVALID_INPUT -10
 #define OVERFLOW_ERR -11
 #define INVALID_TYPE -12
-int32_t CalcResu[OS_MAX_TASK] = { 0 };  //一些运算的运行结果寄存
+ars_i32 CalcResu[OS_MAX_TASK] = { 0 };  //一些运算的运行结果寄存
 int needJump[OS_MAX_TASK] = { 0 };
+Mail Msgs[OS_MAX_TASK] = { 0 };  //IPC邮箱
 //字节码-函数映射表
-typedef int8_t (*OpHandler)(uint8_t, int32_t *, uint16_t);
+typedef ars_i8 (*OpHandler)(uars_i8, ars_i32 *, uars_i16);
 static OpHandler opcode_table[HLT + 1] = {
 	[MOV] = mov,
-	[EXT_BYTE] = ext_byte,
 	[SETARRAY] = set_read_array,
 	[READARRAY] = set_read_array,
 	[INITARRAY] = init_array,
@@ -38,31 +39,41 @@ static OpHandler opcode_table[HLT + 1] = {
 	[RET] = ret,
 	[BIT_AOX] = bit_and_or_xor,
 	[BIT_MOV] = bit_move,
-	[ARS_TIMER] = ars_timer,
-	[GPIO_WRITE] = gpio_write,
-	[GPIO_READ] = gpio_read,
+	[ABI_INVOKE] = abi_invoke,
+	[REG_WRITE] = reg_write,
+	[REG_READ] = reg_read,
 	[VAL] = val,
 	[TO_INT] = to_int,
 	[TO_FLOAT] = to_float,
-	[HLT] = hlt
+	[IPC_SEND] = ipc_send,
+	[IPC_RECV] = ipc_recv,
+	[HLT] = hlt,
 };
 
 //可以叫赋值？
 //MOV [地址][立即数或地址]
-int8_t mov(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	Serial.print("@mov ");
-	Serial.print(taskId);
-	Serial.print("\n");
-	uint8_t type = (ParamType & 0x06) >> 1;
+/*关于mov的一些小技巧
+	bit_mov L $var_int 24
+	mov B $var_byte $var_int
+	;int->byte，将int的最低位字节移到最前方，mov B表示只会读取一个字节的数据（在该例子中即移至最高位的最低位字节）
+	mov I $var_int $var_byte
+	bit_mov R $var_int 24
+	;byte->int，将byte连带后续三个字节一起读取至$var_int并通过位移消去后三个垃圾字节
+	;单独的mov指令只能实现同类型变量的赋值
+	;直接处理类型长度不一致的变量时会截断或越界
+	;但配合bit_mov就可以实现不同长度变量间的赋值了
+*/
+ars_i8 mov(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
+	uars_i8 type = (ParamType & 0x06) >> 1;
 	ParamType &= 0x01;
 	switch (type) {
 		case 0:  //BYTE
 			if (ParamType == 0) {
 				FindPhyMemOffByID(taskId, params[0]);
-				setByte((int8_t)params[1], taskId);
+				setByte((ars_i8)params[1], taskId);
 			} else {
 				FindPhyMemOffByID(taskId, params[1]);
-				int8_t x = findByteWithAddr(taskId);
+				ars_i8 x = findByteWithAddr(taskId);
 				FindPhyMemOffByID(taskId, params[0]);
 				setByte(x, taskId);
 			}
@@ -70,10 +81,10 @@ int8_t mov(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 		case 1:  //INT
 			if (ParamType == 0) {
 				FindPhyMemOffByID(taskId, params[0]);
-				setInt((int32_t)params[1], taskId);
+				setInt((ars_i32)params[1], taskId);
 			} else {
 				FindPhyMemOffByID(taskId, params[1]);
-				int32_t x = findIntWithAddr(taskId);
+				ars_i32 x = findIntWithAddr(taskId);
 				FindPhyMemOffByID(taskId, params[0]);
 				setInt(x, taskId);
 			}
@@ -81,7 +92,7 @@ int8_t mov(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 		case 2:  //FLOAT
 			if (ParamType == 0) {
 				FindPhyMemOffByID(taskId, params[0]);
-				float x = tranIntToFloat(params[1]);
+				float x = copyIntToFloat(params[1]);
 				setFloat(x, taskId);
 			} else {
 				FindPhyMemOffByID(taskId, params[1]);
@@ -93,26 +104,13 @@ int8_t mov(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 	}
 }
 
-int8_t ext_byte(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	Serial.print("@ext_byte ");
-	Serial.print(taskId);
-	Serial.print("\n");
-	FindPhyMemOffByID(taskId, params[1]);
-	int8_t x = findByteWithAddr(taskId);
-	FindPhyMemOffByID(taskId, params[0]);
-	setInt(x, taskId);
-}
-
 //INIT_ARRAY [array] [count] [[1-byte tag(addr/imm)][param]...]
-int8_t init_array(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	Serial.print("@init_array ");
-	Serial.print(taskId);
-	Serial.print("\n");
+ars_i8 init_array(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
 	needJump[taskId] = 1;
-	CurCmd[taskId] += 2 * sizeof(int32_t);
-	uint8_t ivk_type = (ParamType & 0x06) >> 1;
+	CurCmd[taskId] += 2 * sizeof(ars_i32);
+	uars_i8 ivk_type = (ParamType & 0x06) >> 1;
 	ParamType &= 0x01;
-	int32_t count;
+	ars_i32 count;
 	if (ParamType == 0) {
 		count = params[1];
 	} else {
@@ -120,18 +118,18 @@ int8_t init_array(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 		count = findIntWithAddr(taskId);
 	}
 	FindPhyMemOffByID(taskId, params[0]);
-	int32_t i32, addr;
+	ars_i32 i32, addr;
 	float f32;
 	for (int i = 0; i < count; i++) {
-		uint8_t tag = *CurCmd[taskId]++;
+		uars_i8 tag = *CurCmd[taskId]++;
 		switch (ivk_type) {
 			case 0:
 				{
 					if (!tag) {
 						setByte(*CurCmd[taskId]++, taskId);
 					} else {
-						ARS_memmove(&addr, CurCmd[taskId], sizeof(int32_t));
-						CurCmd[taskId] += sizeof(int32_t);
+						ARS_memmove(&addr, CurCmd[taskId], sizeof(ars_i32));
+						CurCmd[taskId] += sizeof(ars_i32);
 						FindPhyMemOffByID(taskId, addr);
 						setByte(findByteWithAddr(taskId), taskId);
 					}
@@ -140,12 +138,12 @@ int8_t init_array(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 			case 1:
 				{
 					if (!tag) {
-						ARS_memmove(&i32, CurCmd[taskId], sizeof(int32_t));
+						ARS_memmove(&i32, CurCmd[taskId], sizeof(ars_i32));
 						setInt(i32, taskId);
-						CurCmd[taskId] += sizeof(int32_t);
+						CurCmd[taskId] += sizeof(ars_i32);
 					} else {
-						ARS_memmove(&addr, CurCmd[taskId], sizeof(int32_t));
-						CurCmd[taskId] += sizeof(int32_t);
+						ARS_memmove(&addr, CurCmd[taskId], sizeof(ars_i32));
+						CurCmd[taskId] += sizeof(ars_i32);
 						FindPhyMemOffByID(taskId, addr);
 						setInt(findIntWithAddr(taskId), taskId);
 					}
@@ -158,8 +156,8 @@ int8_t init_array(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 						setFloat(f32, taskId);
 						CurCmd[taskId] += sizeof(float);
 					} else {
-						ARS_memmove(&addr, CurCmd[taskId], sizeof(int32_t));
-						CurCmd[taskId] += sizeof(int32_t);
+						ARS_memmove(&addr, CurCmd[taskId], sizeof(ars_i32));
+						CurCmd[taskId] += sizeof(ars_i32);
 						FindPhyMemOffByID(taskId, addr);
 						setFloat(findFloatWithAddr(taskId), taskId);
 					}
@@ -170,14 +168,11 @@ int8_t init_array(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 }
 
 //SET_ARRAY/READ_ARRAY [array] [index]
-int8_t set_read_array(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
-	Serial.print("@set/read array ");
-	Serial.print(taskId);
-	Serial.print("\n");
-	uint8_t cmd = cmdAndPmTp >> 3;
-	uint8_t ivk_type = (cmdAndPmTp & 0x06) >> 1;
+ars_i8 set_read_array(uars_i8 cmdAndPmTp, ars_i32 *params, uars_i16 taskId) {
+	uars_i8 cmd = cmdAndPmTp >> 3;
+	uars_i8 ivk_type = (cmdAndPmTp & 0x06) >> 1;
 	cmdAndPmTp &= 0x01;
-	int32_t index;
+	ars_i32 index;
 	if (cmdAndPmTp == 0) {
 		index = params[1];
 	} else {
@@ -206,300 +201,332 @@ int8_t set_read_array(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
 		case 2:
 			{
 				if (cmd == READARRAY)
-					CalcResu[taskId] = tranFloatToInt(findFloatWithAddr(taskId));
+					CalcResu[taskId] = copyFloatToInt(findFloatWithAddr(taskId));
 				else {
-					float x = tranIntToFloat(CalcResu[taskId]);
+					float x = copyIntToFloat(CalcResu[taskId]);
 					setFloat(x, taskId);
 				}
 				break;
 			}
 	}
-	Serial.print("CalcResu: ");
-	Serial.print(CalcResu[taskId]);
-	Serial.print("\n");
 }
 
-// VAL [立即数或地址]
-// 根据类型和地址标志，将值存入 CalcResu[taskId]
-int8_t val(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	Serial.print("@val ");
-	Serial.print(taskId);
-	Serial.print("\n");
-	uint8_t type = (ParamType & 0x06) >> 1;  // 类型：0=B,1=I,2=F
-	uint8_t is_addr = ParamType & 0x01;      // 0=立即数，1=地址
+//VAL [立即数或地址]
+//根据类型和地址标志，将值存入 CalcResu[taskId]
+ars_i8 val(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
+	uars_i8 type = (ParamType & 0x06) >> 1;  //类型：0=B,1=I,2=F
+	uars_i8 is_addr = ParamType & 0x01;      //0=立即数，1=地址
 	if (is_addr) {
 		FindPhyMemOffByID(taskId, params[0]);
 		if (type == 0) {
-			CalcResu[taskId] = findByteWithAddr(taskId);  // 字节符号扩展
+			CalcResu[taskId] = findByteWithAddr(taskId);  //字节符号扩展
 		} else if (type == 1) {
 			CalcResu[taskId] = findIntWithAddr(taskId);
-		} else {  // float
+		} else {  //float
 			float f = findFloatWithAddr(taskId);
-			CalcResu[taskId] = tranFloatToInt(f);
+			CalcResu[taskId] = copyFloatToInt(f);
 		}
 	} else {
-		// 立即数
+		//立即数
 		if (type == 0) {
-			CalcResu[taskId] = (int8_t)params[0];
+			CalcResu[taskId] = (ars_i8)params[0];
 		} else if (type == 1) {
 			CalcResu[taskId] = params[0];
-		} else {  // float
-			float f = tranIntToFloat(params[0]);
-			CalcResu[taskId] = tranFloatToInt(f);
+		} else {  //float
+			float f = copyIntToFloat(params[0]);
+			CalcResu[taskId] = copyFloatToInt(f);
 		}
 	}
 	return 0;
 }
 
-// TO_INT [地址]：将地址处（float）转换为 int 存入 CalcResu
-int8_t to_int(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	Serial.print("@to_int ");
-	Serial.print(taskId);
-	Serial.print("\n");
-	// 参数只有一个地址，忽略 ParamType（无类型指定）
+//TO_INT [地址]：将地址处（float）转换为 int 存入 CalcResu
+ars_i8 to_int(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
+	//数只有一个地址，忽略 ParamType（无类型指定）
 	FindPhyMemOffByID(taskId, params[0]);
 	float f = findFloatWithAddr(taskId);
-	CalcResu[taskId] = (int32_t)f;  // 浮点转整数
+	CalcResu[taskId] = (ars_i32)f;  //浮点转整数
 	return 0;
 }
 
-// TO_FLOAT [地址]：将地址处（int）转换为 float 存入 CalcResu
-int8_t to_float(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	Serial.print("@to_float ");
-	Serial.print(taskId);
-	Serial.print("\n");
+//TO_FLOAT [地址]：将地址处（int）转换为 float 存入 CalcResu
+ars_i8 to_float(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
 	FindPhyMemOffByID(taskId, params[0]);
-	int32_t i = findIntWithAddr(taskId);
+	ars_i32 i = findIntWithAddr(taskId);
 	float f = (float)i;
-	// 将浮点数按 IEEE754 位模式存入 CalcResu（CalcResu 是 int32_t，需保持位模式）
+	//将浮点数按 IEEE754 位模式存入 CalcResu（CalcResu 是 ars_i32，需保持位模式）
 	ARS_memmove(&CalcResu[taskId], &f, sizeof(float));
 	return 0;
 }
 
 //将CalcResu存入内存
 //PUSH [内存地址]
-int8_t push(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	Serial.print("@push ");
-	Serial.print(taskId);
-	Serial.print("\n");
+ars_i8 push(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
 	FindPhyMemOffByID(taskId, params[0]);
 	//保存为BYTE
 	if (ParamType == 0) {
-		setByte((int8_t)CalcResu[taskId], taskId);
+		setByte((ars_i8)CalcResu[taskId], taskId);
 		//保存为INT？我不知道四字节的变量怎么称呼
 	} else if (ParamType == 1) {
-		setInt((int32_t)CalcResu[taskId], taskId);
+		setInt((ars_i32)CalcResu[taskId], taskId);
 	} else {
 		setFloat((float)CalcResu[taskId], taskId);
 	}
 }
 
-//通过millis函数获取系统时钟并存入内存
-//ARS_TIMER [内存地址]
-int8_t ars_timer(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	Serial.print("@timer ");
-	Serial.print(taskId);
-	Serial.print("\n");
-	FindPhyMemOffByID(taskId, params[0]);
-	setInt((int32_t)millis(), taskId);
-}
-
-int8_t gpio_write(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	Serial.print("@gpio_write ");
-	Serial.print(taskId);
-	Serial.print("\n");
-	ParamType &= 0x07;
-	int pin, val;
-	if (ParamType == 0) {  // 两个立即数
-		pin = params[0];
-		val = params[1];
-	} else if (ParamType == 1) {  // 参数1为地址，参数2为立即数
-		FindPhyMemOffByID(taskId, params[0]);
-		pin = findIntWithAddr(taskId);
-		val = params[1];
-	} else if (ParamType == 2) {  // 参数2为地址，参数1为立即数
-		FindPhyMemOffByID(taskId, params[1]);
-		val = findIntWithAddr(taskId);
-		pin = params[0];
-	} else if (ParamType == 3) {  // 两个参数均为地址
-		FindPhyMemOffByID(taskId, params[0]);
-		pin = findIntWithAddr(taskId);
-		FindPhyMemOffByID(taskId, params[1]);
-		val = findIntWithAddr(taskId);
-	}
-	pinMode((uint8_t)pin, OUTPUT);
-	digitalWrite((uint8_t)pin, (uint8_t)val);
-	return 0;
-}
-
-int8_t gpio_read(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	Serial.print("@gpio_read ");
-	Serial.print(taskId);
-	Serial.print("\n");
-	ParamType &= 0x01;
-	int readPin;
+//通过ABIs胶水层访问ABI
+//在调用ABI前可以通过pushp指令进行参数传递
+/*示例：
+	mov I $gpio_write 0
+	pushp I 10
+	pushp I 1
+	abi_invoke $gpio_write
+*/
+ars_i8 abi_invoke(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
 	if (ParamType == 0) {
-		readPin = digitalRead(params[1]);
+		ABIs[params[0]](Stack[taskId], taskId);
+	} else {
+		FindPhyMemOffByID(taskId, params[0]);
+		uars_i32 index = (uars_i32)findIntWithAddr(taskId);
+		ABIs[index](Stack[taskId], taskId);
+	}
+	for (int j = 0; j < IndexOfSPS[taskId]; j++) {
+		Stack[taskId][j] = 0;
+	}
+	IndexOfSPS[taskId] = 0;
+}
+
+//向指定地址的寄存器写入一/四字节指定值
+//其中指定地址一定是四字节
+//此处的ParamLen表示指定值的长度（0：一字节；4：四字节）
+//至于四字节参数到底是整型还是浮点型...其实可以不怎么关心
+//因为在我的设计中，所有内存操作函数几乎都是基于位操作的
+//除了在最终写入时需要强制指定传入参数类型
+//对于浮点参数而言可以使用以下技巧：
+/*
+	mov F $var_int $val_float
+	;通过mov将float值位拷贝进int类型变量中
+	reg_write $addr $var_int
+	;reg_write在该情况下会强制转换为ars_i32
+	;但由于基于位拷贝，int类型变量的内存内容完全与float值内存内容一样
+	;就规避了类型不支持的问题
+*/
+ars_i8 reg_write(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
+	int addr, val, ParamLen = ParamType & 0x04;
+	ParamType &= 0x03;
+	if (ParamType == 0) {  //两个立即数
+		addr = params[0];
+		ARS_memset(&val, &params[1], ParamLen ? 4 : 1);
+	} else if (ParamType == 1) {  //参数1为地址，参数2为立即数
+		FindPhyMemOffByID(taskId, params[0]);
+		addr = findIntWithAddr(taskId);
+		ARS_memset(&val, &params[1], ParamLen ? 4 : 1);
+	} else if (ParamType == 2) {  //参数2为地址，参数1为立即数
+		FindPhyMemOffByID(taskId, params[1]);
+		val = ParamLen ? findIntWithAddr(taskId) : findByteWithAddr(taskId);
+		addr = params[0];
+	} else if (ParamType == 3) {  //两个参数均为地址
+		FindPhyMemOffByID(taskId, params[0]);
+		addr = findIntWithAddr(taskId);
+		FindPhyMemOffByID(taskId, params[1]);
+		val = ParamLen ? findIntWithAddr(taskId) : findByteWithAddr(taskId);
+	}
+	if (!ParamLen)
+		*((volatile ars_i8 *)addr) = (ars_i8)val;
+	else
+		*((volatile ars_i32 *)addr) = (ars_i32)val;
+}
+
+//在指定地址的寄存器读取一或四字节指定值
+ars_i8 reg_read(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
+	int ParamLen = ParamType & 0x02;
+	ParamType &= 0x01;
+	ars_i32 readContent;
+	if (ParamType == 0) {
+		readContent = ParamLen ? *((ars_i32 *)params[1]) : *((ars_i8 *)params[1]);
 	} else {
 		FindPhyMemOffByID(taskId, params[1]);
-		readPin = digitalRead(findByteWithAddr(taskId));
+		uars_i32 trueAddr = (uars_i32)findIntWithAddr(taskId);
+		readContent = ParamLen ? *((ars_i32 *)trueAddr) : *((ars_i8 *)trueAddr);
 	}
-	pinMode((uint8_t)readPin, INPUT);
 	FindPhyMemOffByID(taskId, params[0]);
-	setInt(readPin, taskId);
+	if (!ParamLen)
+		setByte(readContent, taskId);
+	else setInt(readContent, taskId);
+}
+
+//向指定任务通过IPC发送信息
+//其中信息一定是四字节
+//id一定是一字节
+//ipc收发的代码格式跟上述reg_write/reg_read很像
+ars_i8 ipc_send(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
+	ParamType &= 0x07;
+	int id, val;
+	if (ParamType == 0) {  //两个立即数
+		id = params[0];
+		val = params[1];
+	} else if (ParamType == 1) {  //参数1为地址，参数2为立即数
+		FindPhyMemOffByID(taskId, params[0]);
+		id = findByteWithAddr(taskId);
+		val = params[1];
+	} else if (ParamType == 2) {  //参数2为地址，参数1为立即数
+		FindPhyMemOffByID(taskId, params[1]);
+		val = findIntWithAddr(taskId);
+		id = params[0];
+	} else if (ParamType == 3) {  //两个参数均为地址
+		FindPhyMemOffByID(taskId, params[0]);
+		val = findIntWithAddr(taskId);
+		FindPhyMemOffByID(taskId, params[1]);
+		id = findByteWithAddr(taskId);
+	}
+	//与寄存器操作指令不一样的是，ipc_send有返回值
+	//如果消息发送成功则通过calcResu返回1
+	//如果flag非0（通道被占用）则返回0
+	if (!Msgs[id].flag) {
+		Msgs[id].content = val;
+		Msgs[id].flag = 1;
+		CalcResu[taskId] = 1;
+	} else {
+		CalcResu[taskId] = 0;
+	}
+}
+
+//读取（自己的）IPC信息
+ars_i8 ipc_recv(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
+	ars_i32 recv;
+	if (Msgs[taskId].flag) {
+		recv = Msgs[taskId].content;
+		Msgs[taskId].flag = 0;
+	}
+	FindPhyMemOffByID(taskId, params[0]);
+	setInt(recv, taskId);
 }
 
 //子程序参数栈压入参数
 //PUSHP [子程序参数的内存地址或立即数]
-int8_t pushp(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	Serial.print("@pushp ");
-	Serial.print(taskId);
-	Serial.print("\n");
-	uint8_t p = ParamType & 0x01;
+//此处的子程序参数缓存栈可以与ABI序列化参数栈复用
+//算是我之前无意间的缓存栈设计带来的好处吧（笑
+//pushp进去的形参会以立即数的形式在缓存栈内紧密相连（ByVal传参）
+//参数的排序信息则存储在“应用程序”中
+ars_i8 pushp(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
+	uars_i8 p = ParamType & 0x01;
 	ParamType = (ParamType & 0x06) >> 1;
+	//指令参数为立即数
 	if (p == 0) {
+		//0:Byte;1:Int;2:Float
 		if (ParamType == 0) {
-			Stack[taskId][IndexOfSPS[taskId]].DATA.BYTE = (int8_t)params[0];
-			Stack[taskId][IndexOfSPS[taskId]].Type = 1;
+			ars_i8 tmp = (ars_i8)params[0];
+			ARS_memset(&Stack[taskId][IndexOfSPS[taskId]], &tmp, 1);
+			IndexOfSPS[taskId]++;
 		} else if (ParamType == 1) {
-			Stack[taskId][IndexOfSPS[taskId]].DATA.INT = (int32_t)params[0];
-			Stack[taskId][IndexOfSPS[taskId]].Type = 2;
+			ARS_memset(&Stack[taskId][IndexOfSPS[taskId]], &params[0], 4);
+			IndexOfSPS[taskId] += 4;
 		} else {
-			Stack[taskId][IndexOfSPS[taskId]].DATA.FLOAT = tranIntToFloat(params[0]);
-			Stack[taskId][IndexOfSPS[taskId]].Type = 3;
+			float f = copyIntToFloat(params[0]);
+			ARS_memset(&Stack[taskId][IndexOfSPS[taskId]], &f, 4);
+			IndexOfSPS[taskId] += 4;
 		}
+		//指令参数为地址
 	} else {
 		FindPhyMemOffByID(taskId, params[0]);
 		if (ParamType == 0) {
-			Stack[taskId][IndexOfSPS[taskId]].DATA.BYTE = findByteWithAddr(taskId);
-			Stack[taskId][IndexOfSPS[taskId]].Type = 1;
+			ars_i8 b = findByteWithAddr(taskId);
+			ARS_memset(&Stack[taskId][IndexOfSPS[taskId]], &b, 1);
+			IndexOfSPS[taskId]++;
 		} else if (ParamType == 1) {
-			Stack[taskId][IndexOfSPS[taskId]].DATA.INT = findIntWithAddr(taskId);
-			Stack[taskId][IndexOfSPS[taskId]].Type = 2;
+			ars_i32 i = findIntWithAddr(taskId);
+			ARS_memset(&Stack[taskId][IndexOfSPS[taskId]], &i, 4);
+			IndexOfSPS[taskId] += 4;
 		} else {
-			Stack[taskId][IndexOfSPS[taskId]].DATA.FLOAT = findFloatWithAddr(taskId);
-			Stack[taskId][IndexOfSPS[taskId]].Type = 3;
+			float f = findFloatWithAddr(taskId);
+			ARS_memset(&Stack[taskId][IndexOfSPS[taskId]], &f, 4);
+			IndexOfSPS[taskId] += 4;
 		}
 	}
-	IndexOfSPS[taskId]++;
 	if (IndexOfSPS[taskId] >= OS_MAX_PARAM) {
 		return OUT_PARAM_BOUND;
 	}
 }
 
-//volatile uint8_t *p;
 //调用子程序
 //CALL [子程序编号，在编译过程中确定]
-int8_t call(uint8_t ParamType, int32_t *params, uint16_t taskId) {
+ars_i8 call(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
 	needJump[taskId] = 1;
-	Serial.print("@call ");
-	Serial.print(taskId);
 	//内存层级+1
 	MemLevel[taskId]++;
 	//保存上下文数据
 	//在rp2040这种32位环境下指针大小为4，与int大小一致
-	//uint32_t CurAddrOfMemPtr = CurPhyMem[taskId] - OS_PHY_MEM_START;
-	uint32_t CurAddrOfCmd = CurCmd[taskId] - OS_EXE_LOAD_START(taskId);
+	//uars_i32 CurAddrOfMemPtr = CurPhyMem[taskId] - OS_PHY_MEM_START;
+	uars_i32 CurAddrOfCmd = CurCmd[taskId] - OS_EXE_LOAD_START(taskId);
 	//程序命令指针指向参数所表示的地址
-	uint32_t tmpCurCmd = (uint32_t)params[0];
-	Serial.print("addr ");
-	Serial.print(tmpCurCmd);
-	Serial.print("\n");
-	//前四个字节代表运行所需内存总大小（包括行参）
+	uars_i32 tmpCurCmd = (uars_i32)params[0];
+	//前四个字节代表运行所需内存总大小（包括形参）
 	//这个值在编译过程中确定
-	uint32_t ReqMemSize;
-	memcpy(&ReqMemSize, (void *)(OS_EXE_LOAD_START(taskId) + tmpCurCmd), 4);
+	uars_i32 ReqMemSize;
+	ARS_memset(&ReqMemSize, (void *)(OS_EXE_LOAD_START(taskId) + tmpCurCmd), 4);
 	//跳过四字节进入程序主体
-	tmpCurCmd += sizeof(uint32_t);
+	tmpCurCmd += sizeof(uars_i32);
 	//分配内存
 	//分配完后CurPhyMem[taskId]跳转至分配的内存的首地址
 	findFreeMemById(taskId, ReqMemSize, MemLevel[taskId]);
-	CurCmd[taskId] = (volatile uint8_t *)(OS_EXE_LOAD_START(taskId) + tmpCurCmd);
-	//p = CurCmd[taskId];
-	//show_mem_msg((Magic *)CurPhyMem[taskId]);
-	//暂存当前内存指针指向地址
-	//volatile uint8_t *tmp_ptr = CurPhyMem[taskId];
+	CurCmd[taskId] = (volatile uars_i8 *)(OS_EXE_LOAD_START(taskId) + tmpCurCmd);
 	//跳过魔术字头
 	CurPhyMem[taskId] += sizeof(Magic);
 	//压入上下文数据
-	//*(volatile uint32_t *)CurPhyMem[taskId] = CurAddrOfMemPtr;
-	memcpy((void *)CurPhyMem[taskId], &CurAddrOfCmd, 4);
-	CurPhyMem[taskId] += sizeof(int32_t);
-	int i;
+	ARS_memset((void *)CurPhyMem[taskId], &CurAddrOfCmd, 4);
+	CurPhyMem[taskId] += sizeof(ars_i32);
 	//压入参数
-	for (i = 0; i < OS_MAX_PARAM; i++) {
-		if (Stack[taskId][i].Type) {
-			if (Stack[taskId][i].Type == 1) {
-				setByte(Stack[taskId][i].DATA.BYTE, taskId);
-			} else if (Stack[taskId][i].Type == 2) {
-				setInt(Stack[taskId][i].DATA.INT, taskId);
-			} else {
-				setFloat(Stack[taskId][i].DATA.FLOAT, taskId);
-			}
-			//Type=0表示从这儿开始往后的参数栈都未启用
-			//参数栈的数据紧密相连，不存在跳跃
-		} else {
-			break;
-		}
-	}
+	ARS_memset(CurPhyMem, Stack[taskId], IndexOfSPS[taskId]);
 	//销毁参数栈的形参
-	for (int j = 0; j < i; j++) {
-		Stack[taskId][j].Type = 0;
+	for (int j = 0; j < IndexOfSPS[taskId]; j++) {
+		Stack[taskId][j] = 0;
 	}
 	IndexOfSPS[taskId] = 0;
-	//返回内存头
-	//CurPhyMem[taskId] = tmp_ptr;
 }
 
 //子程序返回上文
 //无参数
-int8_t ret(uint8_t ParamType, int32_t *params, uint16_t taskId) {
+ars_i8 ret(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
 	needJump[taskId] = 1;
 	//提取上下文信息
-	Serial.print("@ret ");
-	Serial.print(taskId);
-	Serial.print("\n");
-	//uint32_t Mem = *(volatile int32_t *)(MemTail[taskId] + sizeof(Magic));
-	uint32_t Cmd;
-	memcpy(&Cmd, (void *)(MemTail[taskId] + sizeof(Magic)), 4);
+	uars_i32 Cmd;
+	ARS_memset(&Cmd, (void *)(MemTail[taskId] + sizeof(Magic)), 4);
 	//销毁变量（内存层级在该函数中自减）
 	DelLastFuncMem(taskId);
 	//跳回上文
-	CurCmd[taskId] = (volatile uint8_t *)(Cmd + OS_EXE_LOAD_START(taskId));
+	CurCmd[taskId] = (volatile uars_i8 *)(Cmd + OS_EXE_LOAD_START(taskId));
 }
 
 //条件判断
-int8_t conds(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
-	Serial.print("@conds ");
-	Serial.print(taskId);
-	// 前五位代表命令
-	uint8_t cmd = cmdAndPmTp >> 3;
-	// 后三位共同代表参数的一些性质
-	uint8_t ParamType = cmdAndPmTp & 0x07;
+ars_i8 conds(uars_i8 cmdAndPmTp, ars_i32 *params, uars_i16 taskId) {
+	// 前五个字节代表命令
+	uars_i8 cmd = cmdAndPmTp >> 3;
+	// 后三个字节共同代表参数的一些性质
+	uars_i8 ParamType = cmdAndPmTp & 0x07;
 	// 解析参数类型和数据大小
 	//用double来覆盖所有类型最大可表示的值
 	//简化操作
 	double val1, val2;
 	//x用来判断参数是不是float类型（ParamType第三位）
-	uint8_t x = (ParamType & 0x04) >> 2;
+	uars_i8 x = (ParamType & 0x04) >> 2;
 	//无论如何去掉第三位，否则可能参数误判
 	ParamType &= 0x03;
 	// 读取参数1的值（根据ParamType）
 	if (ParamType == 0) {  // 两个立即数
-		val1 = x ? tranIntToFloat(params[0]) : params[0];
-		val2 = x ? tranIntToFloat(params[1]) : params[1];
+		val1 = x ? copyIntToFloat(params[0]) : params[0];
+		val2 = x ? copyIntToFloat(params[1]) : params[1];
 	} else if (ParamType == 1) {  // 参数1为地址，参数2为立即数
 		// 从内存读取参数1的值
 		FindPhyMemOffByID(taskId, params[0]);
 		val1 = x ? findFloatWithAddr(taskId) : findIntWithAddr(taskId);
 		// 立即数参数2处理
-		val2 = x ? tranIntToFloat(params[1]) : params[1];
+		val2 = x ? copyIntToFloat(params[1]) : params[1];
 	} else if (ParamType == 2) {  // 参数2为地址，参数1为立即数
 		// 从内存读取参数2的值
 		FindPhyMemOffByID(taskId, params[1]);
 		val2 = x ? findFloatWithAddr(taskId) : findIntWithAddr(taskId);
 		// 立即数参数1处理
-		val1 = x ? tranIntToFloat(params[0]) : params[0];
+		val1 = x ? copyIntToFloat(params[0]) : params[0];
 	} else if (ParamType == 3) {  // 两个参数均为地址
 		// 读取参数1的地址
 		FindPhyMemOffByID(taskId, params[0]);
@@ -531,68 +558,53 @@ int8_t conds(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
 			CalcResu[taskId] = (val1 != val2);
 			break;
 		default:
-			return -1;  // 非法指令
+			return -1;  //非法指令
 	}
-	Serial.print(CalcResu[taskId]);
-	Serial.print("\n");
 }
 
 //无条件跳转
-int8_t jmp(uint8_t ParamType, int32_t *params, uint16_t taskId) {
+ars_i8 jmp(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
 	needJump[taskId] = 1;
-	Serial.print("@jmp ");
-	Serial.print(taskId);
-	CurCmd[taskId] = (volatile uint8_t *)(OS_EXE_LOAD_START(taskId) + params[0]);
-	Serial.print("to ");
-	Serial.print(params[0]);
-	Serial.print("\n");
+	CurCmd[taskId] = (volatile uars_i8 *)(OS_EXE_LOAD_START(taskId) + params[0]);
 }
 
 //情况成立（CalcResu不为0）跳转
-int8_t jmp_t(uint8_t ParamType, int32_t *params, uint16_t taskId) {
+ars_i8 jmp_t(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
 	needJump[taskId] = 1;
-	Serial.print("@jmp_t ");
-	Serial.print(taskId);
-	if (CalcResu[taskId]) CurCmd[taskId] = (volatile uint8_t *)(OS_EXE_LOAD_START(taskId) + params[0]);
-	Serial.print("to ");
-	Serial.print(params[0]);
-	Serial.print("is_true ");
-	Serial.print(CalcResu[taskId]);
-	Serial.print("\n");
+	if (CalcResu[taskId]) CurCmd[taskId] = (volatile uars_i8 *)(OS_EXE_LOAD_START(taskId) + params[0]);
 }
 
 //加减乘除
-int8_t calc(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
-	Serial.print("@calc ");
-	Serial.print(taskId);
-	uint8_t cmd = cmdAndPmTp >> 3;
-	uint8_t ParamType = cmdAndPmTp & 0x07;
-	// 新增参数类型标识：ParamType 的第三位表示是否为浮点运算 (1=float)
-	uint8_t is_float = (ParamType & 0x04) >> 2;  // 取第三位
-	ParamType &= 0x03;                           // 保留原始参数类型
+ars_i8 calc(uars_i8 cmdAndPmTp, ars_i32 *params, uars_i16 taskId) {
+	uars_i8 cmd = cmdAndPmTp >> 3;
+	//后三个字节共同代表参数的一些性质
+	uars_i8 ParamType = cmdAndPmTp & 0x07;
+	//新增参数类型标识：ParamType 的第三位表示是否为浮点运算 (1=float)
+	uars_i8 is_float = (ParamType & 0x04) >> 2;  //取第三位
+	ParamType &= 0x03;                           //保留原始参数类型
 	float val1_f, val2_f, result_f;
-	int32_t val1_i, val2_i, result_i;
-	// 根据参数类型读取操作数（支持立即数、地址、混合类型）
+	ars_i32 val1_i, val2_i, result_i;
+	//根据参数类型读取操作数（支持立即数、地址、混合类型）
 	if (is_float) {
 		// 处理浮点运算
-		if (ParamType == 0) {  // 两个立即数（需将 int32_t 转换为 float）
-			val1_f = tranIntToFloat(params[0]);
-			val2_f = tranIntToFloat(params[1]);
-		} else if (ParamType == 1) {  // 参数1为地址，参数2为立即数
+		if (ParamType == 0) {  //两个立即数（需将 ars_i32 转换为 float）
+			val1_f = copyIntToFloat(params[0]);
+			val2_f = copyIntToFloat(params[1]);
+		} else if (ParamType == 1) {  //参数1为地址，参数2为立即数
 			FindPhyMemOffByID(taskId, params[0]);
 			val1_f = findFloatWithAddr(taskId);
-			val2_f = tranIntToFloat(params[1]);
-		} else if (ParamType == 2) {  // 参数2为地址，参数1为立即数
+			val2_f = copyIntToFloat(params[1]);
+		} else if (ParamType == 2) {  //参数2为地址，参数1为立即数
 			FindPhyMemOffByID(taskId, params[1]);
-			val2_f = findFloatWithAddr(taskId);
-			val1_f = tranIntToFloat(params[0]);
-		} else if (ParamType == 3) {  // 两个参数均为地址
+			val1_f = findFloatWithAddr(taskId);
+			val2_f = copyIntToFloat(params[0]);
+		} else if (ParamType == 3) {  //两个参数均为地址
 			FindPhyMemOffByID(taskId, params[0]);
 			val1_f = findFloatWithAddr(taskId);
 			FindPhyMemOffByID(taskId, params[1]);
 			val2_f = findFloatWithAddr(taskId);
 		}
-		// 执行浮点运算
+		//执行浮点运算
 		switch (cmd) {
 			case ADD:
 				result_f = val1_f + val2_f;
@@ -608,10 +620,10 @@ int8_t calc(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
 				result_f = val1_f / val2_f;
 				break;
 		}
-		// 将结果转换为 int32_t 存入 CalcResu（需确保内存对齐）
+		//将结果转换为 ars_i32 存入 CalcResu（需确保内存对齐）
 		ARS_memmove(&CalcResu[taskId], &result_f, sizeof(float));
 	} else {
-		// 原有整数运算逻辑（略作调整）
+		//原有整数运算逻辑（略作调整）
 		if (ParamType == 0) {
 			val1_i = params[0];
 			val2_i = params[1];
@@ -632,11 +644,9 @@ int8_t calc(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
 		switch (cmd) {
 			case ADD:
 				result_i = val1_i + val2_i;
-				//Serial.print("@add result:%d\n", result_i);
 				break;
 			case SUB:
 				result_i = val1_i - val2_i;
-				//Serial.print("@sub result:%d\n", result_i);
 				break;
 			case MUL:
 				result_i = val1_i * val2_i;
@@ -648,22 +658,14 @@ int8_t calc(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
 		}
 		CalcResu[taskId] = result_i;
 	}
-	if (!is_float)
-		Serial.print(CalcResu[taskId]);
-	else
-		Serial.print(tranIntToFloat(CalcResu[taskId]));
-	Serial.print("\n");
 }
 
-int8_t hlt(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	Serial.print("\nExecuted successfully! ");
-	Serial.print(taskId);
-	Serial.print("\n");
+ars_i8 hlt(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
 	ReArrangeMemAndTask(taskId);
 }
 
-int8_t bit_and_or_xor(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	int32_t val1_i, val2_i;
+ars_i8 bit_and_or_xor(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
+	ars_i32 val1_i, val2_i;
 	if (ParamType == 0) {
 		val1_i = params[1];
 		val2_i = params[2];
@@ -691,9 +693,9 @@ int8_t bit_and_or_xor(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 	CalcResu[taskId] = val1_i;
 }
 
-int8_t bit_move(uint8_t ParamType, int32_t *params, uint16_t taskId) {
-	int32_t val1_i, val2_i;
-	uint8_t operate = (ParamType & 0x04) >> 2;
+ars_i8 bit_move(uars_i8 ParamType, ars_i32 *params, uars_i16 taskId) {
+	ars_i32 val1_i, val2_i;
+	uars_i8 operate = (ParamType & 0x04) >> 2;
 	ParamType &= 0x03;
 	if (ParamType == 0) {
 		val1_i = params[0];
@@ -722,11 +724,11 @@ int8_t bit_move(uint8_t ParamType, int32_t *params, uint16_t taskId) {
 //注意！！
 //params并不代表它一定表示的是int类型
 //可能是与float类型共用相同的四字节内存
-int8_t interprete(uint8_t cmdAndPmTp, int32_t *params, uint16_t taskId) {
+ars_i8 interprete(uars_i8 cmdAndPmTp, ars_i32 *params, uars_i16 taskId) {
 	//前五个字节代表命令
-	uint8_t cmd = cmdAndPmTp >> 3;
+	uars_i8 cmd = cmdAndPmTp >> 3;
 	//后三个字节共同代表参数的一些性质
-	uint8_t ParamType = cmdAndPmTp & 0x07;
+	uars_i8 ParamType = cmdAndPmTp & 0x07;
 	if (!((cmd >= ADD && cmd <= NE) || cmd == SETARRAY || cmd == READARRAY)) {
 		opcode_table[cmd](ParamType, params, taskId);
 	} else {

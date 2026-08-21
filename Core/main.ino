@@ -1,42 +1,41 @@
 #include "INTERPRETER.h"
 #include "Memory.h"
 #include "ByteCode.h"
-#include <Arduino.h>
 
-extern int32_t CalcResu[OS_MAX_TASK];
+extern ars_i32 CalcResu[OS_MAX_TASK];
 extern int needJump[OS_MAX_TASK];
-extern volatile uint8_t *CurCmd[OS_MAX_TASK];
+extern volatile uars_i8 *CurCmd[OS_MAX_TASK];
 
-const char paramQ[] = { 2, 2, 2, 2, 2,
-                        1, 1, 2, 2, 2,
+const char paramQ[] = { 2, 2, 2, 2, 1,
+                        1, 2, 2, 2, 2,
                         2, 2, 2, 2, 2,
-                        2, 2, 1, 1, 1,
-                        0, 2, 2, 1, 2,
-                        2, 1, 1, 1, 0 };
+                        2, 1, 1, 1, 0,
+                        2, 3, 1, 2, 2,
+                        1, 1, 1, 2, 1,
+                        0 };
 
 
 void setup() {
-  Serial.begin(115200);
+  //Serial.begin(115200);
   delay(1000);
-  Serial.println("RP2040 ARS VM Starting...");
+  //Serial.println("RP2040 ARS VM Starting...");
   init_mem_info();
-  memcpy(OS_EXE_LOAD_START(0), LED_Flash, LED_Flash_Len);
-  memcpy(OS_EXE_LOAD_START(1), LED_Stream, LED_Stream_Len);
-  Serial.println("Load Programs successed!");
-  call(0, (int32_t *)OS_EXE_LOAD_START(0), 0);
-  call(0, (int32_t *)OS_EXE_LOAD_START(1), 1);
+  ARS_memset(OS_EXE_LOAD_START(0), Fibonacci, Fibonacci_Len);
+  ARS_memset(OS_EXE_LOAD_START(1), LED_Flash, LED_Flash_Len);
+  //Serial.println("Load Programs successed!");
+  call(0, (ars_i32 *)OS_EXE_LOAD_START(0), 0);
+  call(0, (ars_i32 *)OS_EXE_LOAD_START(1), 1);
   needJump[0] = 0;
   needJump[1] = 0;
 }
 
 void loop() {
   // 非阻塞指令调度
-  // 事实上，每个任务执行完一条指令后就会被立即切换成下一个任务，循环往复
-  static uint8_t tid = 0;
+  static uars_i8 tid = 0;
   if (CurCmd[tid]) {
-    uint8_t ins = *CurCmd[tid]++;
-    int32_t params[3];
-    memcpy(params, (const void *)CurCmd[tid], 4 * paramQ[ins >> 3]);
+    uars_i8 ins = *CurCmd[tid]++;
+    ars_i32 params[3];
+    ARS_memset(params, (const void *)CurCmd[tid], 4 * paramQ[ins >> 3]);
     if ((ins >> 3) == CALL) CurCmd[tid] += 4;
     interprete(ins, params, tid);
     if (!needJump[tid] || ((ins >> 3) == JMP_T && !CalcResu[tid]))
@@ -44,6 +43,7 @@ void loop() {
     needJump[tid] = 0;
   }
   tid = (tid + 1) % OS_MAX_TASK;
-  // 让出 CPU 以便其他 Arduino 任务（如串口处理）运行
+  //让出 CPU 以便其他 Arduino 任务（如串口处理）运行
+  //实际生产中可去掉该delay
   delay(1);
 }
