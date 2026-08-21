@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title> ARSIDE-Powered By JavaScript & HTML & DeepSeek : - ) </title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .toolbar {
+            background: #2d2d2d;
+            padding: 8px 16px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid #3c3c3c;
+            flex-shrink: 0;
+            z-index: 10;
+        }
+        .toolbar .brand {
+            font-size: 18px;
+            font-weight: 600;
+            color: #f92672;
+            margin-right: 12px;
+            user-select: none;
+        }
+        .toolbar .brand span { color: #66d9ef; }
+        .toolbar button {
+            background: #3c3c3c;
+            border: none;
+            color: #e0e0e0;
+            padding: 5px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .toolbar button:hover { background: #4e4e4e; }
+        .toolbar button.primary {
+            background: #66d9ef;
+            color: #1e1e1e;
+            font-weight: 500;
+        }
+        .toolbar button.primary:hover { background: #8be4f7; }
+        .toolbar button.compile-btn {
+            background: #a6e22e;
+            color: #1e1e1e;
+            font-weight: 600;
+        }
+        .toolbar button.compile-btn:hover { background: #b8f34a; }
+        .toolbar .file-input-wrap {
+            position: relative;
+            display: inline-block;
+        }
+        .toolbar .file-input-wrap input[type="file"] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+        .toolbar .spacer { flex: 1; }
+        .toolbar .cursor-info {
+            font-size: 13px;
+            color: #aaa;
+            background: #3c3c3c;
+            padding: 2px 12px;
+            border-radius: 4px;
+            user-select: none;
+            font-variant-numeric: tabular-nums;
+        }
+        .toolbar .stats {
+            font-size: 13px;
+            color: #888;
+            user-select: none;
+        }
+        .editor-wrapper {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            background: #1e1e1e;
+            position: relative;
+        }
+        .line-numbers {
+            background: #1e1e1e;
+            color: #5a5a5a;
+            padding: 20px 0 20px 12px;
+            font-size: 15px;
+            line-height: 1.7;
+            font-family: inherit;
+            text-align: right;
+            user-select: none;
+            overflow: hidden;
+            min-width: 40px;
+            border-right: 1px solid #2d2d2d;
+            flex-shrink: 0;
+            padding-right: 10px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            position: relative;
+            z-index: 3;
+        }
+        .line-numbers span {
+            display: block;
+        }
+        .edit-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: #1e1e1e;
+        }
+        .highlight-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            padding: 20px 24px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 15px;
+            line-height: 1.7;
+            font-family: inherit;
+            color: #f8f8f2;
+            background: #1e1e1e;
+            pointer-events: none;
+            z-index: 1;
+            margin: 0;
+            tab-size: 4;
+            -moz-tab-size: 4;
+        }
+        .highlight-layer .hl-keyword,
+        .highlight-layer .hl-struct { color: #f92672; }
+        .highlight-layer .hl-type { color: #66d9ef; }
+        .highlight-layer .hl-var { color: #ffffff; }
+        .highlight-layer .hl-number { color: #a6e22e; }
+        .highlight-layer .hl-comment { color: #75715e; font-style: italic; }
+        .highlight-layer .hl-string { color: #e6db74; }
+        .edit-textarea {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            padding: 20px 24px;
+            overflow: auto;
+            font-size: 15px;
+            line-height: 1.7;
+            font-family: inherit;
+            color: transparent;
+            background: transparent;
+            border: none;
+            outline: none;
+            resize: none;
+            z-index: 2;
+            caret-color: #f8f8f2;
+            tab-size: 4;
+            -moz-tab-size: 4;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin: 0;
+        }
+        .edit-textarea::selection {
+            background: rgba(255, 255, 255, 0.25);
+            color: transparent;
+        }
+        .highlight-layer::-webkit-scrollbar,
+        .edit-textarea::-webkit-scrollbar,
+        .console-output::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        .highlight-layer::-webkit-scrollbar-track,
+        .edit-textarea::-webkit-scrollbar-track,
+        .console-output::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        .highlight-layer::-webkit-scrollbar-thumb,
+        .edit-textarea::-webkit-scrollbar-thumb,
+        .console-output::-webkit-scrollbar-thumb {
+            background: #3c3c3c;
+            border-radius: 6px;
+        }
+        .highlight-layer::-webkit-scrollbar-thumb:hover,
+        .edit-textarea::-webkit-scrollbar-thumb:hover,
+        .console-output::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .console-panel {
+            background: #1a1a1a;
+            border-top: 1px solid #2d2d2d;
+            flex-shrink: 0;
+            height: 200px;
+            display: flex;
+            flex-direction: column;
+            min-height: 80px;
+            resize: vertical;
+            overflow: hidden;
+        }
+        .console-header {
+            background: #252525;
+            padding: 4px 16px;
+            font-size: 13px;
+            color: #aaa;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333;
+            flex-shrink: 0;
+        }
+        .console-header .title {
+            font-weight: 500;
+            color: #ccc;
+        }
+        .console-header .clear-btn {
+            background: none;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-size: 13px;
+            padding: 2px 10px;
+            border-radius: 4px;
+        }
+        .console-header .clear-btn:hover {
+            background: #3c3c3c;
+            color: #eee;
+        }
+        .console-output {
+            flex: 1;
+            overflow: auto;
+            padding: 8px 16px;
+            font-size: 13px;
+            line-height: 1.6;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #d4d4d4;
+        }
+        .console-output .log-info { color: #66d9ef; }
+        .console-output .log-success { color: #a6e22e; }
+        .console-output .log-error { color: #f92672; }
+        .console-output .log-warn { color: #e6db74; }
+        .console-output .log-dump { color: #bbbbbb; }
+        .empty-hint {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #555;
+            font-size: 16px;
+            pointer-events: none;
+            z-index: 0;
+            user-select: none;
+            text-align: center;
+            line-height: 1.8;
+        }
+        .empty-hint kbd {
+            background: #2d2d2d;
+            padding: 2px 10px;
+            border-radius: 4px;
+            color: #aaa;
+            font-size: 14px;
+        }
+        @media (max-width: 640px) {
+            .toolbar { padding: 6px 8px; gap: 6px; }
+            .toolbar .brand { font-size: 15px; margin-right: 6px; }
+            .toolbar button { font-size: 11px; padding: 3px 8px; }
+            .highlight-layer, .edit-textarea { padding: 14px 16px; font-size: 14px; line-height: 1.6; }
+            .line-numbers { padding: 14px 0 14px 8px; font-size: 14px; line-height: 1.6; min-width: 30px; }
+            .console-panel { height: 150px; }
+        }
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: #eee;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 999;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+            transition: opacity 0.3s;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+        .toast.error { background: #c0392b; }
+        .toast.success { background: #27ae60; }
+    </style>
+</head>
+<body>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+        <div class="brand">ARS<span>IDE</span></div>
+        <div class="file-input-wrap">
+            <button class="primary">📂 上传</button>
+            <input type="file" id="fileInput" accept=".txt,.ars,.asm" />
+        </div>
+        <button id="exportBtn">💾 导出</button>
+        <button id="clearBtn">🗑️ 清空</button>
+        <button id="compileBtn" class="compile-btn">⚡ 编译</button>
+        <div class="spacer"></div>
+        <span class="cursor-info" id="cursorInfo">行 1 · 列 1</span>
+        <span class="stats" id="stats">字符 0</span>
+    </div>
+
+    <!-- 编辑器 -->
+    <div class="editor-wrapper">
+        <div class="line-numbers" id="lineNumbers"></div>
+        <div class="edit-container">
+            <pre class="highlight-layer" id="highlightLayer"><span style="color:#555;">在此输入代码…</span></pre>
+            <textarea class="edit-textarea" id="editTextarea" spellcheck="false" autofocus></textarea>
+            <div class="empty-hint" id="emptyHint">
+                ⌨️ 在此输入 ARS 汇编代码<br />
+                <span style="font-size:14px;color:#444;">支持 <kbd>fn</kbd> <kbd>main</kbd> <kbd>mem</kbd> <kbd>lb</kbd> 等语法</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 控制台 -->
+    <div class="console-panel">
+        <div class="console-header">
+            <span class="title">🖥️ 控制台</span>
+            <button class="clear-btn" id="clearConsoleBtn">清空</button>
+        </div>
+        <div class="console-output" id="consoleOutput">🔹 ARS 编译器就绪，点击「编译」查看输出</div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        // ================================================================
+        //  语法高亮引擎 (保持不变)
+        // ================================================================
+        const KEYWORDS = new Set([
+            'mov','set_array','read_array','init_array','push','pushp',
+            'add','sub','mul','div','eq','lt','gt','le','ge','ne',
+            'jmp','jmp_t','call','ret','bit_aox','bit_mov',
+            'abi_invoke','reg_write','reg_read','val','to_int','to_float',
+            'ipc_send','ipc_recv','hlt'
+        ]);
+        const STRUCT_KEYWORDS = new Set(['main','fn','mem','end_mem','lb','endfn','endmain']);
+        const TYPES = new Set(['B','I','F']);
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function highlightLine(line) {
+            if (!line) return '';
+            const trimmed = line.trimStart();
+            if (trimmed.startsWith(';')) {
+                return `<span class="hl-comment">${escapeHtml(line)}</span>`;
+            }
+            const tokens = [];
+            let i = 0, len = line.length;
+            while (i < len) {
+                const ch = line[i];
+                if (ch === ' ' || ch === '\t') {
+                    let ws = '';
+                    while (i < len && (line[i] === ' ' || line[i] === '\t')) ws += line[i++];
+                    tokens.push({ type: 'ws', text: ws });
+                    continue;
+                }
+                if (ch === ';') {
+                    tokens.push({ type: 'comment', text: line.slice(i) });
+                    break;
+                }
+                if (ch === '$') {
+                    let name = '$';
+                    i++;
+                    while (i < len && /[a-zA-Z0-9_]/.test(line[i])) name += line[i++];
+                    tokens.push({ type: 'var', text: name });
+                    continue;
+                }
+                if (ch === '"') {
+                    let str = '"';
+                    i++;
+                    while (i < len && line[i] !== '"') {
+                        if (line[i] === '\\' && i+1 < len) { str += line[i] + line[i+1]; i += 2; }
+                        else str += line[i++];
+                    }
+                    if (i < len && line[i] === '"') { str += '"'; i++; }
+                    tokens.push({ type: 'string', text: str });
+                    continue;
+                }
+                if (/[0-9]/.test(ch) || (ch === '-' && i+1 < len && /[0-9]/.test(line[i+1]))) {
+                    let num = '';
+                    if (ch === '-') { num = '-'; i++; }
+                    while (i < len && /[0-9.]/.test(line[i])) num += line[i++];
+                    if (i < len && /[a-zA-Z_]/.test(line[i])) {
+                        while (i < len && /[a-zA-Z0-9_]/.test(line[i])) num += line[i++];
+                        tokens.push({ type: 'word', text: num });
+                    } else {
+                        tokens.push({ type: 'number', text: num });
+                    }
+                    continue;
+                }
+                if (/[a-zA-Z_]/.test(ch)) {
+                    let word = '';
+                    while (i < len && /[a-zA-Z0-9_]/.test(line[i])) word += line[i++];
+                    if (KEYWORDS.has(word)) tokens.push({ type: 'keyword', text: word });
+                    else if (STRUCT_KEYWORDS.has(word)) tokens.push({ type: 'struct', text: word });
+                    else if (TYPES.has(word)) tokens.push({ type: 'type', text: word });
+                    else tokens.push({ type: 'word', text: word });
+                    continue;
+                }
+                let other = '';
+                while (i < len && !/[a-zA-Z0-9_$"\-]/.test(line[i]) && line[i] !== ';') other += line[i++];
+                if (other === '-' && i < len && /[0-9]/.test(line[i])) { i -= other.length; continue; }
+                tokens.push({ type: 'other', text: other });
+            }
+            let html = '';
+            for (const t of tokens) {
+                switch (t.type) {
+                    case 'keyword': case 'struct': html += `<span class="hl-${t.type}">${escapeHtml(t.text)}</span>`; break;
+                    case 'type': html += `<span class="hl-type">${escapeHtml(t.text)}</span>`; break;
+                    case 'var': html += `<span class="hl-var">${escapeHtml(t.text)}</span>`; break;
+                    case 'number': html += `<span class="hl-number">${escapeHtml(t.text)}</span>`; break;
+                    case 'comment': html += `<span class="hl-comment">${escapeHtml(t.text)}</span>`; break;
+                    case 'string': html += `<span class="hl-string">${escapeHtml(t.text)}</span>`; break;
+                    default: html += escapeHtml(t.text);
+                }
+            }
+            return html;
+        }
+
+        function highlightText(text) {
+            if (!text) return '';
+            return text.split('\n').map(l => highlightLine(l)).join('\n');
+        }
+
+        // ================================================================
+        //  纯 JavaScript 编译器 (与原C逻辑一致，dump格式完全匹配)
+        // ================================================================
+
+        const OP = {
+            MOV:0, SETARRAY:1, READARRAY:2, INITARRAY:3, PUSH:4, PUSHP:5,
+            ADD:6, SUB:7, MUL:8, DIV:9, EQ:10, LT:11, GT:12, LE:13, GE:14, NE:15,
+            JMP:16, JMP_T:17, CALL:18, RET:19, BIT_AOX:20, BIT_MOV:21,
+            ABI_INVOKE:22, REG_WRITE:23, REG_READ:24, VAL:25, TO_INT:26, TO_FLOAT:27,
+            IPC_SEND:28, IPC_RECV:29, HLT:30
+        };
+        const instrNames = [
+            "mov","set_array","read_array","init_array","push","pushp",
+            "add","sub","mul","div","eq","lt","gt","le","ge","ne",
+            "jmp","jmp_t","call","ret","bit_aox","bit_mov",
+            "abi_invoke","reg_write","reg_read","val","to_int","to_float",
+            "ipc_send","ipc_recv","hlt"
+        ];
+        function getOpcode(name) { return instrNames.indexOf(name); }
+
+        // 编译状态
+        let codePool = new Uint8Array(8192);
+        let ptr = 4;
+        let funcHead = 0;
+        let entryPoint = 0;
+        let needMemInit = 0;
+        let inMemSection = 0;
+        let currentFuncName = '';
+        let symbols = [];
+        let symbolCount = 0;
+        let totalVarLen = 0;
+        let state = {
+            functions: [],
+            labels: [],
+            unlables: [],
+            funcCount: 0,
+            labelCount: 0,
+            unlabelCount: 0
+        };
+        let levelCount = 0;
+        let resultToken = '';
+        let gCurrentOpcode = 0;
+        let gLinePtr = 0;
+
+        // 日志收集
+        let compileLogs = [];
+
+        function logInfo(msg) { compileLogs.push({ type: 'info', text: msg }); }
+        function logSuccess(msg) { compileLogs.push({ type: 'success', text: msg }); }
+        function logError(msg) { compileLogs.push({ type: 'error', text: msg }); }
+        function logWarn(msg) { compileLogs.push({ type: 'warn', text: msg }); }
+        function logDump(msg) { compileLogs.push({ type: 'dump', text: msg }); }
+
+        // 辅助函数
+        function skipBlank(s, start) {
+            let i = start;
+            while (i < s.length && (s[i] === ' ' || s[i] === '\t')) i++;
+            return i;
+        }
+        function readToken(s, start) {
+            let i = start;
+            if (s[i] === '"') {
+                let token = '"';
+                i++;
+                while (i < s.length && s[i] !== '"') {
+                    if (s[i] === '\\' && i+1 < s.length) { token += s[i] + s[i+1]; i += 2; }
+                    else token += s[i++];
+                }
+                if (i < s.length && s[i] === '"') { token += '"'; i++; }
+                resultToken = token;
+                return i;
+            } else {
+                let token = '';
+                while (i < s.length && s[i] !== ' ' && s[i] !== '\t') token += s[i++];
+                resultToken = token;
+                return i;
+            }
+        }
+        function getVarOffset(name) {
+            for (let i = 0; i < symbolCount; i++) {
+                if (symbols[i].name === name) return symbols[i].addr;
+            }
+            logError(`未定义变量 '${name}'，当前符号表: ${JSON.stringify(symbols.slice(0, symbolCount))}`);
+            throw new Error(`未定义的变量 '${name}'`);
+        }
+
+        // 字节码生成
+        function emitInstr(opcode, paramType, params) {
+            const byte = (opcode << 3) | (paramType & 0x07);
+            codePool[ptr++] = byte;
+            if (params) {
+                for (let v of params) {
+                    codePool[ptr++] = v & 0xFF;
+                    codePool[ptr++] = (v >> 8) & 0xFF;
+                    codePool[ptr++] = (v >> 16) & 0xFF;
+                    codePool[ptr++] = (v >> 24) & 0xFF;
+                }
+            }
+        }
+        function emit0(op) { emitInstr(op, 0, null); }
+        function emit1(op, pt, p1) { emitInstr(op, pt, [p1]); }
+        function emit2(op, pt, p1, p2) { emitInstr(op, pt, [p1, p2]); }
+        function emit3(op, pt, p1, p2, p3) { emitInstr(op, pt, [p1, p2, p3]); }
+
+        // 指令处理函数 (完整，与之前相同，略去重复以节省篇幅，但为了完整性保留全部)
+        function compileMov(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let type;
+            if (resultToken === 'B') type = 0;
+            else if (resultToken === 'I') type = 1;
+            else if (resultToken === 'F') type = 2;
+            else throw new Error('mov 缺少类型');
+            i = readToken(line, i); i = skipBlank(line, i);
+            let dest = getVarOffset(resultToken);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let srcIsAddr = (resultToken[0] === '$');
+            let srcVal;
+            if (srcIsAddr) srcVal = getVarOffset(resultToken);
+            else {
+                if (type !== 2) srcVal = parseInt(resultToken, 10);
+                else {
+                    let f = parseFloat(resultToken);
+                    const arr = new Uint8Array(4);
+                    new Float32Array(arr.buffer)[0] = f;
+                    srcVal = new Int32Array(arr.buffer)[0];
+                }
+            }
+            let paramType = (type << 1) | (srcIsAddr ? 1 : 0);
+            emit2(OP.MOV, paramType, dest, srcVal);
+            return i;
+        }
+        function compileSetArray(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let elemType;
+            if (resultToken === 'B') elemType = 0;
+            else if (resultToken === 'I') elemType = 1;
+            else if (resultToken === 'F') elemType = 2;
+            else throw new Error('set_array 缺少类型');
+            i = readToken(line, i); i = skipBlank(line, i);
+            let arrayAddr = getVarOffset(resultToken);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let idxIsAddr = (resultToken[0] === '$');
+            let idxVal = idxIsAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            let paramType = (elemType << 1) | (idxIsAddr ? 1 : 0);
+            emit2(OP.SETARRAY, paramType, arrayAddr, idxVal);
+            return i;
+        }
+        function compileReadArray(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let elemType;
+            if (resultToken === 'B') elemType = 0;
+            else if (resultToken === 'I') elemType = 1;
+            else if (resultToken === 'F') elemType = 2;
+            else throw new Error('read_array 缺少类型');
+            i = readToken(line, i); i = skipBlank(line, i);
+            let arrayAddr = getVarOffset(resultToken);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let idxIsAddr = (resultToken[0] === '$');
+            let idxVal = idxIsAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            let paramType = (elemType << 1) | (idxIsAddr ? 1 : 0);
+            emit2(OP.READARRAY, paramType, arrayAddr, idxVal);
+            return i;
+        }
+        function compileInitArray(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let elemType;
+            if (resultToken === 'B') elemType = 0;
+            else if (resultToken === 'I') elemType = 1;
+            else if (resultToken === 'F') elemType = 2;
+            else throw new Error('init_array 缺少类型');
+            i = readToken(line, i); i = skipBlank(line, i);
+            let arrayAddr = getVarOffset(resultToken);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let countIsAddr = (resultToken[0] === '$');
+            let countVal = countIsAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            let paramType = (elemType << 1) | (countIsAddr ? 1 : 0);
+            emit2(OP.INITARRAY, paramType, arrayAddr, countVal);
+            while (i < line.length) {
+                i = skipBlank(line, i);
+                if (i >= line.length || line[i] === ';') break;
+                i = readToken(line, i);
+                let isAddr = (resultToken[0] === '$');
+                let val = isAddr ? getVarOffset(resultToken) : 0;
+                codePool[ptr++] = isAddr ? 1 : 0;
+                if (elemType === 0) {
+                    if (isAddr) {
+                        codePool[ptr++] = val & 0xFF; codePool[ptr++] = (val>>8)&0xFF;
+                        codePool[ptr++] = (val>>16)&0xFF; codePool[ptr++] = (val>>24)&0xFF;
+                    } else codePool[ptr++] = parseInt(resultToken, 10) & 0xFF;
+                } else if (elemType === 1) {
+                    let num = isAddr ? val : parseInt(resultToken, 10);
+                    codePool[ptr++] = num & 0xFF; codePool[ptr++] = (num>>8)&0xFF;
+                    codePool[ptr++] = (num>>16)&0xFF; codePool[ptr++] = (num>>24)&0xFF;
+                } else {
+                    let f = isAddr ? val : parseFloat(resultToken);
+                    const arr = new Uint8Array(4);
+                    new Float32Array(arr.buffer)[0] = f;
+                    codePool[ptr++] = arr[0]; codePool[ptr++] = arr[1];
+                    codePool[ptr++] = arr[2]; codePool[ptr++] = arr[3];
+                }
+            }
+            return i;
+        }
+        function compilePush(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let type;
+            if (resultToken === 'B') type = 0;
+            else if (resultToken === 'I') type = 1;
+            else if (resultToken === 'F') type = 2;
+            else throw new Error('push 缺少类型');
+            i = readToken(line, i); i = skipBlank(line, i);
+            let dest = getVarOffset(resultToken);
+            emit1(OP.PUSH, type, dest);
+            return i;
+        }
+        function compilePushp(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let type;
+            if (resultToken === 'B') type = 0;
+            else if (resultToken === 'I') type = 1;
+            else if (resultToken === 'F') type = 2;
+            else throw new Error('pushp 缺少类型');
+            i = readToken(line, i); i = skipBlank(line, i);
+            let isAddr = (resultToken[0] === '$');
+            let val;
+            if (isAddr) val = getVarOffset(resultToken);
+            else {
+                if (type !== 2) val = parseInt(resultToken, 10);
+                else {
+                    let f = parseFloat(resultToken);
+                    const arr = new Uint8Array(4);
+                    new Float32Array(arr.buffer)[0] = f;
+                    val = new Int32Array(arr.buffer)[0];
+                }
+            }
+            let paramType = (type << 1) | (isAddr ? 1 : 0);
+            emit1(OP.PUSHP, paramType, val);
+            return i;
+        }
+        function compileCalcCmp(line, start) {
+            const opcode = gCurrentOpcode;
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let isFloat = (resultToken === 'F') ? 1 : 0;
+            if (resultToken !== 'I' && !isFloat) throw new Error('缺少类型 I/F');
+            i = readToken(line, i); i = skipBlank(line, i);
+            let p1IsAddr = (resultToken[0] === '$');
+            let p1Val = p1IsAddr ? getVarOffset(resultToken) : (isFloat ? (() => { let f=parseFloat(resultToken); const arr=new Uint8Array(4); new Float32Array(arr.buffer)[0]=f; return new Int32Array(arr.buffer)[0]; })() : parseInt(resultToken, 10));
+            i = readToken(line, i); i = skipBlank(line, i);
+            let p2IsAddr = (resultToken[0] === '$');
+            let p2Val = p2IsAddr ? getVarOffset(resultToken) : (isFloat ? (() => { let f=parseFloat(resultToken); const arr=new Uint8Array(4); new Float32Array(arr.buffer)[0]=f; return new Int32Array(arr.buffer)[0]; })() : parseInt(resultToken, 10));
+            let paramType;
+            if (!p1IsAddr && !p2IsAddr) paramType = 0;
+            else if (p1IsAddr && !p2IsAddr) paramType = 1;
+            else if (!p1IsAddr && p2IsAddr) paramType = 2;
+            else paramType = 3;
+            if (isFloat) paramType |= (1 << 2);
+            emit2(opcode, paramType, p1Val, p2Val);
+            return i;
+        }
+        function compileJmp(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            state.unlables.push({ name: resultToken, codeAddr: ptr, isTaken: 0 });
+            state.unlabelCount++;
+            emit1(OP.JMP, 0, 0);
+            return i;
+        }
+        function compileJmpT(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            state.unlables.push({ name: resultToken, codeAddr: ptr, isTaken: 0 });
+            state.unlabelCount++;
+            emit1(OP.JMP_T, 0, 0);
+            return i;
+        }
+        function compileCall(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let funcAddr = 0;
+            for (let j=0; j<state.funcCount; j++) {
+                if (state.functions[j].name === resultToken) { funcAddr = state.functions[j].addr; break; }
+            }
+            if (!funcAddr) throw new Error(`未定义的函数 '${resultToken}'`);
+            emit1(OP.CALL, 0, funcAddr);
+            return i;
+        }
+        function compileRet(line, start) { emit0(OP.RET); return start; }
+        function compileBitAox(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let opType;
+            if (resultToken === 'A') opType = 1;
+            else if (resultToken === 'O') opType = 2;
+            else if (resultToken === 'X') opType = 3;
+            else throw new Error('bit_aox 需要 A/O/X');
+            i = readToken(line, i); i = skipBlank(line, i);
+            let p1IsAddr = (resultToken[0] === '$');
+            let p1Val = p1IsAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let p2IsAddr = (resultToken[0] === '$');
+            let p2Val = p2IsAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            let paramType;
+            if (!p1IsAddr && !p2IsAddr) paramType = 0;
+            else if (p1IsAddr && !p2IsAddr) paramType = 1;
+            else if (p1IsAddr && p2IsAddr) paramType = 2;
+            else throw new Error('第一个操作数不能是立即数当第二个是地址');
+            emit3(OP.BIT_AOX, paramType, opType, p1Val, p2Val);
+            return i;
+        }
+        function compileBitMov(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let shiftDir;
+            if (resultToken === 'L') shiftDir = 0;
+            else if (resultToken === 'R') shiftDir = 1;
+            else throw new Error('bit_move 需要 L/R');
+            i = readToken(line, i); i = skipBlank(line, i);
+            let p1IsAddr = (resultToken[0] === '$');
+            let p1Val = p1IsAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let p2IsAddr = (resultToken[0] === '$');
+            let p2Val = p2IsAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            let paramType;
+            if (!p1IsAddr && !p2IsAddr) paramType = 0;
+            else if (p1IsAddr && !p2IsAddr) paramType = 1;
+            else if (p1IsAddr && p2IsAddr) paramType = 2;
+            else throw new Error('第一个操作数不能是立即数当第二个是地址');
+            paramType |= (shiftDir << 2);
+            emit2(OP.BIT_MOV, paramType, p1Val, p2Val);
+            return i;
+        }
+        function compileAbiInvoke(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let isAddr = (resultToken[0] === '$');
+            let abiNum = isAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            emit1(OP.ABI_INVOKE, isAddr ? 1 : 0, abiNum);
+            return i;
+        }
+        function compileRegWrite(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let p1IsAddr = (resultToken[0] === '$');
+            let p1Val = p1IsAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let p2IsAddr = (resultToken[0] === '$');
+            let p2Val = p2IsAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            let paramType;
+            if (!p1IsAddr && !p2IsAddr) paramType = 0;
+            else if (p1IsAddr && !p2IsAddr) paramType = 1;
+            else if (!p1IsAddr && p2IsAddr) paramType = 2;
+            else paramType = 3;
+            emit2(OP.REG_WRITE, paramType, p1Val, p2Val);
+            return i;
+        }
+        function compileRegRead(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let dest = getVarOffset(resultToken);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let srcIsAddr = (resultToken[0] === '$');
+            let srcVal = srcIsAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            let paramType = srcIsAddr ? 1 : 0;
+            emit2(OP.REG_READ, paramType, dest, srcVal);
+            return i;
+        }
+        function compileVal(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let type;
+            if (resultToken === 'B') type = 0;
+            else if (resultToken === 'I') type = 1;
+            else if (resultToken === 'F') type = 2;
+            else throw new Error('val 缺少类型');
+            i = readToken(line, i); i = skipBlank(line, i);
+            let isAddr = (resultToken[0] === '$');
+            let val;
+            if (isAddr) val = getVarOffset(resultToken);
+            else {
+                if (type !== 2) val = parseInt(resultToken, 10);
+                else {
+                    let f = parseFloat(resultToken);
+                    const arr = new Uint8Array(4);
+                    new Float32Array(arr.buffer)[0] = f;
+                    val = new Int32Array(arr.buffer)[0];
+                }
+            }
+            let paramType = (type << 1) | (isAddr ? 1 : 0);
+            emit1(OP.VAL, paramType, val);
+            return i;
+        }
+        function compileToInt(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            if (resultToken[0] !== '$') throw new Error('to_int 需要变量地址 (带 $)');
+            let addr = getVarOffset(resultToken);
+            emit1(OP.TO_INT, 0, addr);
+            return i;
+        }
+        function compileToFloat(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            if (resultToken[0] !== '$') throw new Error('to_float 需要变量地址 (带 $)');
+            let addr = getVarOffset(resultToken);
+            emit1(OP.TO_FLOAT, 0, addr);
+            return i;
+        }
+        function compileIpcSend(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let idIsAddr = (resultToken[0] === '$');
+            let idVal = idIsAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let msgIsAddr = (resultToken[0] === '$');
+            let msgVal = msgIsAddr ? getVarOffset(resultToken) : parseInt(resultToken, 10);
+            let paramType;
+            if (!idIsAddr && !msgIsAddr) paramType = 0;
+            else if (idIsAddr && !msgIsAddr) paramType = 1;
+            else if (!idIsAddr && msgIsAddr) paramType = 2;
+            else paramType = 3;
+            emit2(OP.IPC_SEND, paramType, idVal, msgVal);
+            return i;
+        }
+        function compileIpcRecv(line, start) {
+            let i = skipBlank(line, start);
+            i = readToken(line, i); i = skipBlank(line, i);
+            let dest = getVarOffset(resultToken);
+            emit1(OP.IPC_RECV, 0, dest);
+            return i;
+        }
+        function compileHlt(line, start) {
+            emit0(OP.HLT);
+            symbolCount = 0;
+            totalVarLen = 0;
+            levelCount--;
+            return start;
+        }
+
+        const handlers = {
+            [OP.MOV]: compileMov, [OP.SETARRAY]: compileSetArray,
+            [OP.READARRAY]: compileReadArray, [OP.INITARRAY]: compileInitArray,
+            [OP.PUSH]: compilePush, [OP.PUSHP]: compilePushp,
+            [OP.ADD]: compileCalcCmp, [OP.SUB]: compileCalcCmp,
+            [OP.MUL]: compileCalcCmp, [OP.DIV]: compileCalcCmp,
+            [OP.EQ]: compileCalcCmp, [OP.LT]: compileCalcCmp,
+            [OP.GT]: compileCalcCmp, [OP.LE]: compileCalcCmp,
+            [OP.GE]: compileCalcCmp, [OP.NE]: compileCalcCmp,
+            [OP.JMP]: compileJmp, [OP.JMP_T]: compileJmpT,
+            [OP.CALL]: compileCall, [OP.RET]: compileRet,
+            [OP.BIT_AOX]: compileBitAox, [OP.BIT_MOV]: compileBitMov,
+            [OP.ABI_INVOKE]: compileAbiInvoke,
+            [OP.REG_WRITE]: compileRegWrite, [OP.REG_READ]: compileRegRead,
+            [OP.VAL]: compileVal, [OP.TO_INT]: compileToInt,
+            [OP.TO_FLOAT]: compileToFloat,
+            [OP.IPC_SEND]: compileIpcSend, [OP.IPC_RECV]: compileIpcRecv,
+            [OP.HLT]: compileHlt
+        };
+
+        // 编译一行
+        function compileOneLine(line) {
+            let s = line;
+            let i = skipBlank(s, 0);
+            if (i >= s.length || s[i] === ';') return;
+
+            i = readToken(s, i);
+            i = skipBlank(s, i);
+
+            if (needMemInit) {
+                if (resultToken === 'mem') {
+                    inMemSection = 1;
+                    return;
+                }
+                if (resultToken === 'end_mem') {
+                    inMemSection = 0;
+                    needMemInit = 0;
+                    const addr = funcHead;
+                    codePool[addr] = totalVarLen & 0xFF;
+                    codePool[addr+1] = (totalVarLen >> 8) & 0xFF;
+                    codePool[addr+2] = (totalVarLen >> 16) & 0xFF;
+                    codePool[addr+3] = (totalVarLen >> 24) & 0xFF;
+                    return;
+                }
+                if (inMemSection) {
+                    let varName = resultToken;
+                    i = readToken(s, i); i = skipBlank(s, i);
+                    let elemSize = 0;
+                    if (resultToken === 'B') elemSize = 1;
+                    else if (resultToken === 'I' || resultToken === 'F') elemSize = 4;
+                    else throw new Error(`未知类型 ${resultToken}`);
+                    i = readToken(s, i); i = skipBlank(s, i);
+                    let arrayLen = parseInt(resultToken, 10);
+                    symbols.push({ name: varName, addr: totalVarLen });
+                    symbolCount++;
+                    totalVarLen += elemSize * (arrayLen + 1);
+                    return;
+                }
+            }
+
+            if (resultToken === 'main' || resultToken === 'fn') {
+                let isMain = (resultToken === 'main');
+                if (isMain) {
+                    entryPoint = ptr;
+                    codePool[0] = entryPoint & 0xFF;
+                    codePool[1] = (entryPoint >> 8) & 0xFF;
+                    codePool[2] = (entryPoint >> 16) & 0xFF;
+                    codePool[3] = (entryPoint >> 24) & 0xFF;
+                    currentFuncName = 'main';
+                    logInfo(`main 入口地址: ${entryPoint}`);
+                } else {
+                    i = readToken(s, i); i = skipBlank(s, i);
+                    let fname = resultToken;
+                    state.functions.push({ name: fname, addr: ptr });
+                    state.funcCount++;
+                    currentFuncName = fname;
+                    logInfo(`函数 "${fname}" 地址: ${ptr}`);
+                }
+                symbols = [];
+                symbolCount = 0;
+                totalVarLen = 0;
+                needMemInit = 1;
+                levelCount++;
+                funcHead = ptr;
+                ptr += 4;
+                return;
+            }
+
+            if (resultToken === 'lb') {
+                i = readToken(s, i); i = skipBlank(s, i);
+                state.labels.push({ name: resultToken, addr: ptr });
+                state.labelCount++;
+                logInfo(`标签 "${resultToken}" 地址: ${ptr}`);
+                return;
+            }
+
+            if (resultToken === 'endfn' || resultToken === 'endmain') {
+                symbolCount = 0;
+                totalVarLen = 0;
+                levelCount--;
+                return;
+            }
+
+            let opcode = getOpcode(resultToken);
+            if (opcode < 0) {
+                logWarn(`未知指令 '${resultToken}' 被忽略`);
+                return;
+            }
+            gCurrentOpcode = opcode;
+            const handler = handlers[opcode];
+            if (handler) {
+                handler(s, i);
+            } else {
+                logWarn(`指令 '${resultToken}' 没有处理函数`);
+            }
+        }
+
+        // 标签回填
+        function resolveLabels() {
+            for (let i=0; i<state.unlabelCount; i++) {
+                const un = state.unlables[i];
+                let target = 0;
+                for (let j=0; j<state.labelCount; j++) {
+                    if (state.labels[j].name === un.name) { target = state.labels[j].addr; break; }
+                }
+                if (!target) throw new Error(`未定义的标签 '${un.name}'`);
+                const addr = un.codeAddr + 1;
+                codePool[addr] = target & 0xFF;
+                codePool[addr+1] = (target >> 8) & 0xFF;
+                codePool[addr+2] = (target >> 16) & 0xFF;
+                codePool[addr+3] = (target >> 24) & 0xFF;
+            }
+        }
+
+        // 对外编译接口
+        function compileARS(sourceCode) {
+            // 重置状态
+            codePool = new Uint8Array(8192);
+            ptr = 4;
+            funcHead = 0;
+            entryPoint = 0;
+            needMemInit = 0;
+            inMemSection = 0;
+            currentFuncName = '';
+            symbols = [];
+            symbolCount = 0;
+            totalVarLen = 0;
+            state = { functions:[], labels:[], unlables:[], funcCount:0, labelCount:0, unlabelCount:0 };
+            levelCount = 0;
+            resultToken = '';
+            gCurrentOpcode = 0;
+            compileLogs = [];
+
+            const lines = sourceCode.split('\n');
+            for (let line of lines) {
+                line = line.replace(/\r$/, '');
+                try {
+                    compileOneLine(line);
+                } catch (e) {
+                    logError(`编译错误: ${e.message}  (行: "${line}")`);
+                    throw e;
+                }
+            }
+            resolveLabels();
+            const codeSize = ptr;
+            logSuccess(`编译完成，生成 ${codeSize} 字节`);
+
+            // ---------- 生成与C完全一致的dump格式 ----------
+            let dump = '字节码 dump:\n';
+            for (let i = 0; i < codeSize; i++) {
+                dump += '0x' + codePool[i].toString(16).padStart(2, '0').toUpperCase() + ',';
+                if ((i + 1) % 16 === 0) dump += '\n';
+            }
+            logDump(dump);
+
+            return codePool.slice(0, codeSize);
+        }
+
+        // ================================================================
+        //  UI 部分
+        // ================================================================
+
+        const textarea = document.getElementById('editTextarea');
+        const highlightLayer = document.getElementById('highlightLayer');
+        const emptyHint = document.getElementById('emptyHint');
+        const stats = document.getElementById('stats');
+        const cursorInfo = document.getElementById('cursorInfo');
+        const lineNumbers = document.getElementById('lineNumbers');
+        const consoleOutput = document.getElementById('consoleOutput');
+        const fileInput = document.getElementById('fileInput');
+        const exportBtn = document.getElementById('exportBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const compileBtn = document.getElementById('compileBtn');
+        const clearConsoleBtn = document.getElementById('clearConsoleBtn');
+        const toast = document.getElementById('toast');
+
+        function updateLineNumbers() {
+            const code = textarea.value;
+            const lines = code.split('\n');
+            let html = '';
+            for (let i = 1; i <= lines.length; i++) html += `<span>${i}</span>`;
+            lineNumbers.innerHTML = html;
+        }
+
+        function updateCursorPosition() {
+            const start = textarea.selectionStart;
+            const code = textarea.value;
+            const lines = code.split('\n');
+            let row = 1, col = 1, pos = 0;
+            for (let i = 0; i < lines.length; i++) {
+                const lineLen = lines[i].length;
+                if (pos + lineLen >= start) {
+                    row = i + 1;
+                    col = start - pos + 1;
+                    break;
+                }
+                pos += lineLen + 1;
+            }
+            cursorInfo.textContent = `行 ${row} · 列 ${col}`;
+        }
+
+        function updateEditor() {
+            const code = textarea.value;
+            highlightLayer.innerHTML = highlightText(code) || '<span style="color:#555;">⏎</span>';
+            stats.textContent = `字符 ${code.length}`;
+            emptyHint.classList.toggle('hidden', code.trim() !== '');
+            updateLineNumbers();
+            updateCursorPosition();
+        }
+
+        function syncScroll() {
+            highlightLayer.scrollTop = textarea.scrollTop;
+            highlightLayer.scrollLeft = textarea.scrollLeft;
+            lineNumbers.scrollTop = textarea.scrollTop;
+        }
+
+        function updateConsole(logs) {
+            let html = '';
+            for (const log of logs) {
+                const cls = `log-${log.type}`;
+                html += `<div class="${cls}">${escapeHtml(log.text)}</div>`;
+            }
+            consoleOutput.innerHTML = html;
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        function clearConsole() {
+            consoleOutput.innerHTML = '🔹 控制台已清空';
+        }
+
+        // 事件绑定
+        textarea.addEventListener('input', updateEditor);
+        textarea.addEventListener('scroll', syncScroll);
+        textarea.addEventListener('selectionchange', updateCursorPosition);
+        window.addEventListener('resize', syncScroll);
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                textarea.value = ev.target.result;
+                updateEditor();
+                textarea.scrollTop = 0;
+                highlightLayer.scrollTop = 0;
+                lineNumbers.scrollTop = 0;
+                fileInput.value = '';
+            };
+            reader.onerror = () => { showToast('读取文件失败', 'error'); fileInput.value=''; };
+            reader.readAsText(file, 'UTF-8');
+        });
+
+        exportBtn.addEventListener('click', () => {
+            const content = textarea.value;
+            if (!content.trim()) { showToast('编辑器为空', 'error'); return; }
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'code.txt';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('导出成功', 'success');
+        });
+
+        clearBtn.addEventListener('click', () => {
+            if (textarea.value.trim() === '') return;
+            if (confirm('确定清空所有内容吗？')) {
+                textarea.value = '';
+                updateEditor();
+                textarea.focus();
+            }
+        });
+
+        compileBtn.addEventListener('click', () => {
+            const source = textarea.value;
+            if (!source.trim()) { showToast('没有可编译的代码', 'error'); return; }
+            try {
+                const start = performance.now();
+                const bytecode = compileARS(source);
+                const elapsed = (performance.now() - start).toFixed(2);
+                updateConsole(compileLogs);
+                const blob = new Blob([bytecode], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'output.ars_bin';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast(`编译成功！${bytecode.length} 字节 (${elapsed}ms)`, 'success');
+            } catch (e) {
+                updateConsole(compileLogs);
+                showToast(`编译失败: ${e.message}`, 'error');
+                console.error(e);
+            }
+        });
+
+        clearConsoleBtn.addEventListener('click', clearConsole);
+
+        let toastTimer = null;
+        function showToast(msg, type='info') {
+            toast.textContent = msg;
+            toast.className = 'toast ' + type;
+            clearTimeout(toastTimer);
+            void toast.offsetWidth;
+            toast.classList.add('show');
+            toastTimer = setTimeout(() => toast.classList.remove('show'), 4000);
+        }
+
+        // 键盘快捷键
+        textarea.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                compileBtn.click();
+            }
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const start = textarea.selectionStart, end = textarea.selectionEnd, val = textarea.value;
+                if (start !== end && val.slice(start, end).includes('\n')) {
+                    const before = val.slice(0, start), selected = val.slice(start, end), after = val.slice(end);
+                    const indented = selected.split('\n').map(l => '    ' + l).join('\n');
+                    textarea.value = before + indented + after;
+                    textarea.selectionStart = start;
+                    textarea.selectionEnd = start + indented.length;
+                } else {
+                    textarea.value = val.slice(0, start) + '    ' + val.slice(end);
+                    textarea.selectionStart = textarea.selectionEnd = start + 4;
+                }
+                updateEditor(); syncScroll();
+            }
+            if (e.key === 'Tab' && e.shiftKey) {
+                e.preventDefault();
+                const start = textarea.selectionStart, end = textarea.selectionEnd, val = textarea.value;
+                const before = val.slice(0, start), selected = val.slice(start, end), after = val.slice(end);
+                if (selected.includes('\n')) {
+                    const unindented = selected.split('\n').map(l => l.startsWith('    ') ? l.slice(4) : l.startsWith('\t') ? l.slice(1) : l).join('\n');
+                    textarea.value = before + unindented + after;
+                    textarea.selectionStart = start;
+                    textarea.selectionEnd = start + unindented.length;
+                } else {
+                    const lineStart = val.lastIndexOf('\n', start-1)+1;
+                    const lineEnd = val.indexOf('\n', start);
+                    const line = val.slice(lineStart, lineEnd===-1?undefined:lineEnd);
+                    const newLine = line.startsWith('    ') ? line.slice(4) : line.startsWith('\t') ? line.slice(1) : line;
+                    const delta = line.length - newLine.length;
+                    textarea.value = val.slice(0, lineStart) + newLine + val.slice(lineEnd===-1?undefined:lineEnd);
+                    textarea.selectionStart = Math.max(start - delta, lineStart);
+                    textarea.selectionEnd = Math.max(end - delta, lineStart);
+                }
+                updateEditor(); syncScroll();
+            }
+        });
+
+        // 拖拽上传
+        const editorWrap = document.querySelector('.editor-wrapper');
+        let dragCounter = 0;
+        editorWrap.addEventListener('dragenter', e => { e.preventDefault(); dragCounter++; if(dragCounter===1) editorWrap.style.outline='2px dashed #66d9ef'; });
+        editorWrap.addEventListener('dragover', e => e.preventDefault());
+        editorWrap.addEventListener('dragleave', e => { e.preventDefault(); dragCounter--; if(dragCounter===0) editorWrap.style.outline='none'; });
+        editorWrap.addEventListener('drop', e => {
+            e.preventDefault(); dragCounter=0; editorWrap.style.outline='none';
+            const files = e.dataTransfer.files;
+            if (files.length) {
+                const reader = new FileReader();
+                reader.onload = ev => { textarea.value = ev.target.result; updateEditor(); textarea.scrollTop=0; highlightLayer.scrollTop=0; lineNumbers.scrollTop=0; };
+                reader.onerror = () => showToast('读取文件失败', 'error');
+                reader.readAsText(files[0], 'UTF-8');
+            }
+        });
+
+        // 初始化
+        const sample = 
+`;示例代码
+fn delay_ms
+	mem
+		$len I 0
+		$now I 0
+		$start I 0
+		$mid I 0
+	end_mem
+	;2号ABI为timer函数
+	abi_invoke 2
+    push I $start
+	lb loop
+		abi_invoke 2
+        push I $now
+		sub I $now $start
+		push I $mid
+		ge I $mid $len
+		jmp_t finish
+	jmp loop
+	lb finish
+		ret
+endfn
+		
+main
+	mem
+		$pio I 0
+	end_mem
+	mov I $pio 6
+	lb loop_main
+		pushp I $pio
+        pushp I 1
+        ;0号ABI为digitalWrite函数
+        abi_invoke 0		
+        pushp I 100
+		call delay_ms
+		pushp I $pio
+        pushp I 0
+        abi_invoke 0
+	jmp loop_main
+	hlt
+endmain`;
+        textarea.value = sample;
+        updateEditor();
+        textarea.focus();
+        setTimeout(syncScroll, 50);
+        console.log('🚀 ARS IDE 已启动 (dump格式与C一致)');
+        console.log('💡 快捷键: Ctrl+Enter 编译 | Ctrl+S 导出');
+    </script>
+</body>
+</html>
